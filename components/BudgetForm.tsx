@@ -8,22 +8,22 @@ export default function BudgetForm({ categories, month, action }: {
   const [ledger, setLedger] = useState('personal');
   const cats = categories.filter(c => c.ledger === ledger);
   return (
-    <form action={action} className="bg-white border border-slate-200 rounded p-3 flex flex-wrap gap-2 items-end text-sm">
+    <form action={action} className="card p-4 flex flex-wrap gap-3 items-end">
       <input type="hidden" name="month" value={month} />
-      <label className="flex flex-col text-xs">장부
-        <select name="ledger" value={ledger} onChange={e => setLedger(e.target.value)} className="border rounded p-1.5">
+      <label className="flex flex-col gap-1"><span className="label">장부</span>
+        <select name="ledger" value={ledger} onChange={e => setLedger(e.target.value)} className="select">
           <option value="personal">개인</option><option value="business">사업자</option>
         </select>
       </label>
-      <label className="flex flex-col text-xs">카테고리
-        <select name="category_id" required className="border rounded p-1.5">
+      <label className="flex flex-col gap-1"><span className="label">카테고리</span>
+        <select name="category_id" required className="select">
           {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </label>
-      <label className="flex flex-col text-xs">예산(원)
-        <input type="number" name="amount" min="0" required className="border rounded p-1.5" />
+      <label className="flex flex-col gap-1"><span className="label">예산 (원)</span>
+        <input type="number" name="amount" min="0" step="1000" required className="input text-right tabular-nums" />
       </label>
-      <button className="bg-slate-900 text-white rounded px-3 py-1.5">저장/수정</button>
+      <button className="btn-primary">저장 / 수정</button>
     </form>
   );
 }

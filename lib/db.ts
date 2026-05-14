@@ -43,6 +43,18 @@ function init(db: DatabaseSync) {
       start_date TEXT NOT NULL,
       active INTEGER NOT NULL DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS account_settings (
+      ledger TEXT PRIMARY KEY CHECK(ledger IN ('personal','business')),
+      opening_balance INTEGER NOT NULL DEFAULT 0,
+      opening_date TEXT NOT NULL DEFAULT '2025-01-01',
+      tax_reserve_rate REAL NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS people (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      relation TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS budgets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ledger TEXT NOT NULL,
@@ -52,6 +64,11 @@ function init(db: DatabaseSync) {
       UNIQUE(ledger, category_id, month)
     );
   `);
+
+  // migrations for existing databases (ALTER ignores duplicate-column errors)
+  const tryAlter = (sql: string) => { try { db.exec(sql); } catch { /* column already exists */ } };
+  tryAlter("ALTER TABLE account_settings ADD COLUMN tax_reserve_rate REAL NOT NULL DEFAULT 0");
+  tryAlter("ALTER TABLE transactions ADD COLUMN person_id INTEGER");
 
   const count = db.prepare('SELECT COUNT(*) as c FROM categories').get() as { c: number };
   if (count.c === 0) {
@@ -97,6 +114,7 @@ export interface Transaction {
   to_ledger: Ledger | null;
   memo: string | null;
   recurring_id: number | null;
+  person_id: number | null;
 }
 
 export interface Category { id: number; ledger: Ledger; name: string }
@@ -107,3 +125,4 @@ export interface Recurring {
   start_date: string; active: number;
 }
 export interface Budget { id: number; ledger: Ledger; category_id: number; month: string; amount: number }
+export interface Person { id: number; name: string; relation: string | null }
