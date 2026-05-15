@@ -76,12 +76,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
             {/* 데스크탑 헤더 — 가로 메뉴 */}
             <nav className="hidden sm:block sticky top-0 z-20 bg-white border-b border-slate-200">
-              <div className="max-w-6xl mx-auto px-5 h-14 flex items-center gap-6">
-                <Link href="/" className="font-semibold text-sm flex items-center gap-2 shrink-0">
-                  <span className="relative inline-flex w-8 h-8 rounded-lg items-center justify-center text-white text-[15px] font-extrabold tracking-tighter"
+              <div className="max-w-6xl mx-auto px-6 h-16 flex items-center gap-7">
+                <Link href="/" className="font-semibold text-[17px] flex items-center gap-2.5 shrink-0">
+                  <span className="relative inline-flex w-10 h-10 rounded-xl items-center justify-center text-white text-[18px] font-extrabold tracking-tighter"
                         style={{ background: 'linear-gradient(135deg, #4a98ff 0%, #3182f6 55%, #1b64da 100%)' }}>
                     ₩
-                    <span className="absolute bottom-[3px] right-[3px] w-[5px] h-[5px] rounded-full bg-white/85" />
+                    <span className="absolute bottom-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-white/85" />
                   </span>
                   모아장부
                 </Link>
@@ -96,20 +96,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <NavLink href="/debts">대출</NavLink>
                   <NavLink href="/settings">설정</NavLink>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Link href="/profile" className="flex items-center gap-2 hover:opacity-80">
+                <div className="flex items-center gap-3 shrink-0">
+                  <Link href="/profile" className="flex items-center gap-2.5 hover:opacity-80">
                     {displayImage ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={displayImage} alt="" className="w-8 h-8 rounded-full" />
+                      <img src={displayImage} alt="" className="w-10 h-10 rounded-full" />
                     ) : (
-                      <span className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-sm font-medium text-slate-600">
+                      <span className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-base font-medium text-slate-600">
                         {initial}
                       </span>
                     )}
-                    <span className="text-sm text-slate-700">{displayName}</span>
+                    <span className="text-[15px] font-medium text-slate-700">{displayName}</span>
                   </Link>
                   <form action={async () => { 'use server'; await signOut({ redirectTo: '/login' }); }}>
-                    <button className="text-xs text-slate-500 hover:text-slate-700 ml-1">로그아웃</button>
+                    <button className="text-sm text-slate-500 hover:text-slate-700">로그아웃</button>
                   </form>
                 </div>
               </div>

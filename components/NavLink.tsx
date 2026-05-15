@@ -8,7 +8,7 @@ export default function NavLink({ href, children }: { href: string; children: Re
   return (
     <Link
       href={href}
-      className={`px-3 py-1 rounded text-sm transition ${
+      className={`px-3.5 py-1.5 rounded-lg text-[15px] font-medium transition ${
         active ? 'nav-active' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
       }`}
     >
