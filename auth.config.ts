@@ -11,7 +11,7 @@ export const authConfig = {
       clientSecret: process.env.KAKAO_CLIENT_SECRET || '',
     }),
   ],
-  session: { strategy: 'jwt' },
+  session: { strategy: 'jwt', maxAge: 60 * 60 * 24 * 30 }, // 30일 자동 로그인 유지
   pages: { signIn: '/login' },
   callbacks: {
     authorized({ auth, request }) {

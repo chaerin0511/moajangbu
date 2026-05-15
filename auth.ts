@@ -21,7 +21,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const name = (profile as any).name || (profile as any).properties?.nickname || (profile as any).kakao_account?.profile?.nickname || '사용자';
       const image = (profile as any).image || (profile as any).picture || (profile as any).properties?.profile_image || (profile as any).kakao_account?.profile?.profile_image_url || null;
 
-      const existing = await db.execute({ sql: 'SELECT id FROM users WHERE kakao_id=?', args: [kakaoId] });
+      const existing = await db.execute({ sql: 'SELECT id, name FROM users WHERE kakao_id=?', args: [kakaoId] });
       if (existing.rows.length === 0) {
         const r = await db.execute({
           sql: 'INSERT INTO users (kakao_id, email, name, image) VALUES (?, ?, ?, ?)',
@@ -47,8 +47,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
         }
       } else {
-        // 이름은 사용자가 직접 수정한 값을 보존. 이메일/이미지는 카카오 최신값으로 갱신.
-        await db.execute({ sql: 'UPDATE users SET email=?, image=COALESCE(?, image) WHERE kakao_id=?', args: [email, image, kakaoId] });
+        // 이메일·이미지는 항상 최신화. 이름은 기본값('사용자')일 때만 카카오 닉네임으로 갱신 (사용자가 직접 수정한 이름은 보존).
+        const cur = existing.rows[0] as any;
+        const shouldUpdateName = !cur.name || cur.name === '사용자';
+        if (shouldUpdateName) {
+          await db.execute({ sql: 'UPDATE users SET name=?, email=?, image=COALESCE(?, image) WHERE kakao_id=?', args: [name, email, image, kakaoId] });
+        } else {
+          await db.execute({ sql: 'UPDATE users SET email=?, image=COALESCE(?, image) WHERE kakao_id=?', args: [email, image, kakaoId] });
+        }
       }
       return true;
       } catch (e) {
