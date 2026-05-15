@@ -1,17 +1,11 @@
 import NextAuth from 'next-auth';
-import Kakao from 'next-auth/providers/kakao';
+import { authConfig } from './auth.config';
 import { ensureDb } from './lib/db';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  providers: [
-    Kakao({
-      clientId: process.env.KAKAO_CLIENT_ID!,
-      clientSecret: process.env.KAKAO_CLIENT_SECRET || '',
-    }),
-  ],
-  session: { strategy: 'jwt' },
-  pages: { signIn: '/login' },
+  ...authConfig,
   callbacks: {
+    ...authConfig.callbacks,
     async signIn({ profile }) {
       if (!profile) return false;
       const db = await ensureDb();
@@ -29,12 +23,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const newId = Number(r.lastInsertRowid);
         const userCount = await db.execute('SELECT COUNT(*) AS c FROM users');
         if (Number((userCount.rows[0] as any).c) === 1) {
-          // First user claims orphan rows
           for (const tbl of ['categories','transactions','recurring','budgets','account_settings','people','debts','debt_rate_history']) {
             try { await db.execute({ sql: `UPDATE ${tbl} SET user_id=? WHERE user_id IS NULL`, args: [newId] }); } catch {}
           }
         } else {
-          // New user (not the first): seed default categories for them
           const seed: [string, string][] = [
             ['personal', '식비'], ['personal', '교통'], ['personal', '공과금'],
             ['personal', '문화/여가'], ['personal', '의료'], ['personal', '쇼핑'],
@@ -48,7 +40,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
         }
       } else {
-        // refresh name/email
         await db.execute({ sql: 'UPDATE users SET name=?, email=? WHERE kakao_id=?', args: [name, email, kakaoId] });
       }
       return true;
