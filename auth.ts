@@ -6,11 +6,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   callbacks: {
     ...authConfig.callbacks,
-    async signIn({ profile }) {
-      if (!profile) return false;
+    async signIn({ profile, account }) {
+      try {
+      console.log('[signIn] profile keys:', profile ? Object.keys(profile) : 'null', 'account.providerAccountId:', account?.providerAccountId);
+      if (!profile && !account) return false;
       const db = await ensureDb();
-      const kakaoId = String(profile.sub || profile.id || '');
-      if (!kakaoId) return false;
+      const kakaoId = String(account?.providerAccountId || (profile as any)?.sub || (profile as any)?.id || '');
+      if (!kakaoId) { console.error('[signIn] no kakaoId'); return false; }
       const email = (profile as any).email || (profile as any).kakao_account?.email || null;
       const name = (profile as any).name || (profile as any).properties?.nickname || (profile as any).kakao_account?.profile?.nickname || '사용자';
 
@@ -43,17 +45,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         await db.execute({ sql: 'UPDATE users SET name=?, email=? WHERE kakao_id=?', args: [name, email, kakaoId] });
       }
       return true;
+      } catch (e) {
+        console.error('[signIn] error:', e);
+        return false;
+      }
     },
-    async jwt({ token, profile }) {
-      if (profile) {
-        const kakaoId = String(profile.sub || profile.id || '');
-        const db = await ensureDb();
-        const u = await db.execute({ sql: 'SELECT id, name FROM users WHERE kakao_id=?', args: [kakaoId] });
-        const row = u.rows[0] as any;
-        if (row) {
-          token.userId = Number(row.id);
-          token.name = row.name;
+    async jwt({ token, profile, account }) {
+      try {
+        if (profile || account) {
+          const kakaoId = String(account?.providerAccountId || (profile as any)?.sub || (profile as any)?.id || '');
+          if (kakaoId) {
+            const db = await ensureDb();
+            const u = await db.execute({ sql: 'SELECT id, name FROM users WHERE kakao_id=?', args: [kakaoId] });
+            const row = u.rows[0] as any;
+            if (row) {
+              token.userId = Number(row.id);
+              token.name = row.name;
+            }
+          }
         }
+      } catch (e) {
+        console.error('[jwt] error:', e);
       }
       return token;
     },
