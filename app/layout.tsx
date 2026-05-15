@@ -25,7 +25,7 @@ export const viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
-  themeColor: '#3182f6',
+  themeColor: '#4a7c5f',
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -53,11 +53,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <header className="sm:hidden sticky top-0 z-20 bg-white border-b border-slate-200">
               <div className="px-4 h-14 flex items-center justify-between">
                 <Link href="/" className="font-semibold text-[16px] flex items-center gap-2.5 shrink-0">
-                  <span className="relative inline-flex w-9 h-9 rounded-xl items-center justify-center text-white text-[16px] font-extrabold tracking-tighter"
-                        style={{ background: 'linear-gradient(135deg, #4a98ff 0%, #3182f6 55%, #1b64da 100%)' }}>
-                    ₩
-                    <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-white/85" />
-                  </span>
+                  <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden>
+                    <circle cx="18" cy="18" r="16" fill="#4a7c5f" />
+                    <circle cx="18" cy="18" r="11.5" fill="none" stroke="white" strokeOpacity="0.35" strokeWidth="1" />
+                    <path d="M11.5 18.5 L16 23 L24.5 13.5" fill="none" stroke="white" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                   모아장부
                 </Link>
                 <Link href="/profile" className="flex items-center shrink-0">
@@ -80,11 +80,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <nav className="hidden sm:block sticky top-0 z-20 bg-white border-b border-slate-200">
               <div className="max-w-7xl mx-auto px-5 h-16 flex items-center gap-4 lg:gap-6">
                 <Link href="/" className="font-semibold text-[16px] flex items-center gap-2.5 shrink-0">
-                  <span className="relative inline-flex w-10 h-10 rounded-xl items-center justify-center text-white text-[18px] font-extrabold tracking-tighter"
-                        style={{ background: 'linear-gradient(135deg, #4a98ff 0%, #3182f6 55%, #1b64da 100%)' }}>
-                    ₩
-                    <span className="absolute bottom-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-white/85" />
-                  </span>
+                  <svg width="40" height="40" viewBox="0 0 36 36" aria-hidden>
+                    <circle cx="18" cy="18" r="16" fill="#4a7c5f" />
+                    <circle cx="18" cy="18" r="11.5" fill="none" stroke="white" strokeOpacity="0.35" strokeWidth="1" />
+                    <path d="M11.5 18.5 L16 23 L24.5 13.5" fill="none" stroke="white" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                   모아장부
                 </Link>
                 <div className="flex gap-0.5 flex-1 min-w-0">

@@ -8,7 +8,7 @@ export const metadata = {
   description: '개인 가계부 + 사업자 현금흐름을 한 곳에서. 고정지출·세금·비상금을 자동으로 떼고 실제 쓸 수 있는 금액만 보여줍니다.',
 };
 
-const MINT = '#3aa37a';
+const MINT = '#4a7c5f';
 
 async function signupAction(fd: FormData) {
   'use server';

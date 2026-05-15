@@ -8,7 +8,7 @@ export const metadata = {
   description: '개인 가계부 + 사업자 현금흐름을 한 곳에서.',
 };
 
-const MINT = '#3aa37a';
+const MINT = '#4a7c5f';
 
 async function signupAction(fd: FormData) {
   'use server';

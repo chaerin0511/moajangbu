@@ -3,8 +3,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import type { ViewMode } from '@/lib/view-mode';
 
-const MINT = '#3aa37a';
-const MINT_DARK = '#2f7a5a';
+const MINT = '#4a7c5f';
+const MINT_DARK = '#3a6249';
 
 const MODES: { value: ViewMode; title: string; desc: string }[] = [
   { value: 'personal', title: '개인',  desc: '가계부·고정지출·비상금' },
@@ -100,7 +100,7 @@ export default function SignupFlow({ signupAction }: { signupAction: (fd: FormDa
                 className={`w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition ${
                   active ? '' : 'bg-white border-slate-200 hover:border-slate-300'
                 }`}
-                style={active ? { background: '#eef5f1', borderColor: '#cfe3d8' } : undefined}
+                style={active ? { background: '#eef3ef', borderColor: '#d0ddd3' } : undefined}
               >
                 <div>
                   <div className="text-[14px] font-semibold" style={active ? { color: MINT_DARK } : undefined}>
