@@ -19,12 +19,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (!kakaoId) { console.error('[signIn] no kakaoId'); return false; }
       const email = (profile as any).email || (profile as any).kakao_account?.email || null;
       const name = (profile as any).name || (profile as any).properties?.nickname || (profile as any).kakao_account?.profile?.nickname || '사용자';
+      const image = (profile as any).image || (profile as any).picture || (profile as any).properties?.profile_image || (profile as any).kakao_account?.profile?.profile_image_url || null;
 
       const existing = await db.execute({ sql: 'SELECT id FROM users WHERE kakao_id=?', args: [kakaoId] });
       if (existing.rows.length === 0) {
         const r = await db.execute({
-          sql: 'INSERT INTO users (kakao_id, email, name) VALUES (?, ?, ?)',
-          args: [kakaoId, email, name],
+          sql: 'INSERT INTO users (kakao_id, email, name, image) VALUES (?, ?, ?, ?)',
+          args: [kakaoId, email, name, image],
         });
         const newId = Number(r.lastInsertRowid);
         const userCount = await db.execute('SELECT COUNT(*) AS c FROM users');
@@ -46,7 +47,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
         }
       } else {
-        await db.execute({ sql: 'UPDATE users SET name=?, email=? WHERE kakao_id=?', args: [name, email, kakaoId] });
+        // 이름은 사용자가 직접 수정한 값을 보존. 이메일/이미지는 카카오 최신값으로 갱신.
+        await db.execute({ sql: 'UPDATE users SET email=?, image=COALESCE(?, image) WHERE kakao_id=?', args: [email, image, kakaoId] });
       }
       return true;
       } catch (e) {
@@ -54,18 +56,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return false;
       }
     },
-    async jwt({ token, profile, account }) {
+    async jwt({ token, profile, account, trigger }) {
       try {
         if (profile || account) {
           const kakaoId = String(account?.providerAccountId || (profile as any)?.sub || (profile as any)?.id || '');
           if (kakaoId) {
             const db = await ensureDb();
-            const u = await db.execute({ sql: 'SELECT id, name FROM users WHERE kakao_id=?', args: [kakaoId] });
+            const u = await db.execute({ sql: 'SELECT id, name, image FROM users WHERE kakao_id=?', args: [kakaoId] });
             const row = u.rows[0] as any;
             if (row) {
               token.userId = Number(row.id);
               token.name = row.name;
+              token.picture = row.image;
             }
+          }
+        }
+        // After profile update, refresh from DB
+        if (trigger === 'update' && token.userId) {
+          const db = await ensureDb();
+          const u = await db.execute({ sql: 'SELECT name, image FROM users WHERE id=?', args: [Number(token.userId)] });
+          const row = u.rows[0] as any;
+          if (row) {
+            token.name = row.name;
+            token.picture = row.image;
           }
         }
       } catch (e) {
@@ -76,6 +89,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       (session as any).userId = token.userId;
       if (token.name) session.user!.name = token.name as string;
+      if (token.picture) session.user!.image = token.picture as string;
       return session;
     },
   },

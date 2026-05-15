@@ -2,6 +2,28 @@
 import { ensureDb } from './db';
 import { revalidatePath } from 'next/cache';
 import { currentUserId } from './auth-helper';
+import { signOut } from '@/auth';
+import { redirect } from 'next/navigation';
+
+export async function updateProfileName(fd: FormData) {
+  const userId = await currentUserId();
+  const name = String(fd.get('name') || '').trim();
+  if (!name) return;
+  const db = await ensureDb();
+  await db.execute({ sql: 'UPDATE users SET name=? WHERE id=?', args: [name, userId] });
+  revalidatePath('/profile'); revalidatePath('/');
+}
+
+export async function deleteAccount() {
+  const userId = await currentUserId();
+  const db = await ensureDb();
+  for (const tbl of ['transactions','recurring','budgets','categories','people','debts','debt_rate_history','account_settings','user_account_settings']) {
+    try { await db.execute({ sql: `DELETE FROM ${tbl} WHERE user_id=?`, args: [userId] }); } catch {}
+  }
+  await db.execute({ sql: 'DELETE FROM users WHERE id=?', args: [userId] });
+  await signOut({ redirect: false });
+  redirect('/login');
+}
 
 function num(v: FormDataEntryValue | null): number | null {
   if (v === null || v === '') return null;

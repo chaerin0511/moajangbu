@@ -51,10 +51,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/debts">대출</NavLink>
                 <NavLink href="/settings">설정</NavLink>
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                {session.user?.name && (
-                  <span className="text-xs text-slate-600">{session.user.name}</span>
-                )}
+              <div className="flex items-center gap-2 shrink-0">
+                <Link href="/profile" className="flex items-center gap-2 hover:opacity-80">
+                  {session.user?.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={session.user.image} alt="" className="w-7 h-7 rounded-full" />
+                  ) : (
+                    <span className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-xs text-slate-500">
+                      {String(session.user?.name || '?').charAt(0)}
+                    </span>
+                  )}
+                  {session.user?.name && (
+                    <span className="text-xs text-slate-600 hidden sm:inline">{session.user.name}</span>
+                  )}
+                </Link>
                 <form action={async () => { 'use server'; await signOut({ redirectTo: '/login' }); }}>
                   <button className="text-xs text-slate-500 hover:text-slate-700">로그아웃</button>
                 </form>

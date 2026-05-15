@@ -131,6 +131,7 @@ async function init(db: Client) {
   await tryAlter("ALTER TABLE debts ADD COLUMN mandatory_repay_income INTEGER NOT NULL DEFAULT 0");
   await tryAlter("ALTER TABLE transactions ADD COLUMN principal_amount INTEGER");
   await tryAlter("ALTER TABLE transactions ADD COLUMN interest_amount INTEGER");
+  await tryAlter("ALTER TABLE users ADD COLUMN image TEXT");
 
   const countR = await db.execute('SELECT COUNT(*) as c FROM categories');
   const count = Number((countR.rows[0] as any).c);
