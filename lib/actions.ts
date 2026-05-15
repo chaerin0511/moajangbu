@@ -13,6 +13,58 @@ function str(v: FormDataEntryValue | null): string | null {
   return s === '' ? null : s;
 }
 
+export async function createTransactionsBulk(fd: FormData) {
+  const db = getDb();
+  const types     = fd.getAll('type').map(String);
+  const ledgers   = fd.getAll('ledger').map(String);
+  const dates     = fd.getAll('date').map(String);
+  const amounts   = fd.getAll('amount').map(v => Number(v) || 0);
+  const catNames  = fd.getAll('category_name').map(v => String(v).trim());
+  const memos     = fd.getAll('memo').map(v => { const s = String(v).trim(); return s === '' ? null : s; });
+  const personNames = fd.getAll('person_name').map(v => String(v).trim());
+
+  // resolve category name → id (create if missing)
+  const findOrCreateCategory = (ledger: string, name: string): number | null => {
+    if (!name) return null;
+    let row = db.prepare(`SELECT id FROM categories WHERE ledger=? AND name=?`).get(ledger, name) as any;
+    if (!row) {
+      db.prepare(`INSERT INTO categories (ledger, name) VALUES (?,?)`).run(ledger, name);
+      row = db.prepare(`SELECT id FROM categories WHERE ledger=? AND name=?`).get(ledger, name);
+    }
+    return row?.id ?? null;
+  };
+  const findOrCreatePerson = (name: string): number | null => {
+    if (!name) return null;
+    let row = db.prepare(`SELECT id FROM people WHERE name=?`).get(name) as any;
+    if (!row) {
+      db.prepare(`INSERT INTO people (name) VALUES (?)`).run(name);
+      row = db.prepare(`SELECT id FROM people WHERE name=?`).get(name);
+    }
+    return row?.id ?? null;
+  };
+
+  const n = types.length;
+  const ins = db.prepare(
+    `INSERT INTO transactions (ledger, type, date, amount, category_id, memo, person_id) VALUES (?,?,?,?,?,?,?)`
+  );
+  let inserted = 0;
+  db.exec('BEGIN');
+  try {
+    for (let i = 0; i < n; i++) {
+      if (!amounts[i] || amounts[i] <= 0) continue;
+      if (types[i] === 'transfer') continue;
+      if (!dates[i]) continue;
+      const cid = findOrCreateCategory(ledgers[i], catNames[i] || '');
+      const pid = findOrCreatePerson(personNames[i] || '');
+      ins.run(ledgers[i], types[i], dates[i], amounts[i], cid as any, memos[i] as any, pid as any);
+      inserted++;
+    }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+
+  revalidatePath('/transactions'); revalidatePath('/'); revalidatePath('/people'); revalidatePath('/categories');
+}
+
 export async function createTransaction(fd: FormData) {
   const db = getDb();
   const type = String(fd.get('type'));
@@ -161,6 +213,59 @@ export async function deletePerson(fd: FormData) {
   db.prepare('UPDATE transactions SET person_id=NULL WHERE person_id=?').run(id);
   db.prepare('DELETE FROM people WHERE id=?').run(id);
   revalidatePath('/people'); revalidatePath('/transactions');
+}
+
+export async function createDebt(fd: FormData) {
+  const name = String(fd.get('name')).trim();
+  const kind = String(fd.get('kind') || '기타').trim();
+  const initial_principal = num(fd.get('initial_principal')) || 0;
+  const interest_rate = num(fd.get('interest_rate')) || 0;
+  const start_date = String(fd.get('start_date')) || new Date().toISOString().slice(0, 10);
+  const target_end_date = str(fd.get('target_end_date'));
+  if (!name || initial_principal <= 0) return;
+  getDb().prepare(
+    `INSERT INTO debts (name, kind, initial_principal, interest_rate, start_date, target_end_date) VALUES (?,?,?,?,?,?)`
+  ).run(name, kind, initial_principal, interest_rate, start_date, target_end_date);
+  revalidatePath('/debts'); revalidatePath('/');
+}
+
+export async function deleteDebt(fd: FormData) {
+  const id = num(fd.get('id'));
+  if (!id) return;
+  const db = getDb();
+  db.prepare('UPDATE transactions SET debt_id=NULL, principal_amount=NULL, interest_amount=NULL WHERE debt_id=?').run(id);
+  db.prepare('DELETE FROM debts WHERE id=?').run(id);
+  revalidatePath('/debts'); revalidatePath('/transactions'); revalidatePath('/');
+}
+
+export async function toggleDebt(fd: FormData) {
+  const id = num(fd.get('id'));
+  if (!id) return;
+  getDb().prepare('UPDATE debts SET active = 1 - active WHERE id=?').run(id);
+  revalidatePath('/debts');
+}
+
+export async function recordDebtPayment(fd: FormData) {
+  const debt_id = num(fd.get('debt_id'));
+  const principal = num(fd.get('principal_amount')) || 0;
+  const interest  = num(fd.get('interest_amount')) || 0;
+  const date = String(fd.get('date')) || new Date().toISOString().slice(0, 10);
+  const ledger = String(fd.get('ledger') || 'personal');
+  const memo = str(fd.get('memo'));
+  if (!debt_id || (principal + interest) <= 0) return;
+  const total = principal + interest;
+  // find or create "대출 상환" category for that ledger
+  const db = getDb();
+  let cat = db.prepare(`SELECT id FROM categories WHERE ledger=? AND name='대출 상환'`).get(ledger) as any;
+  if (!cat) {
+    db.prepare(`INSERT INTO categories (ledger, name) VALUES (?, '대출 상환')`).run(ledger);
+    cat = db.prepare(`SELECT id FROM categories WHERE ledger=? AND name='대출 상환'`).get(ledger);
+  }
+  db.prepare(
+    `INSERT INTO transactions (ledger, type, date, amount, category_id, memo, debt_id, principal_amount, interest_amount)
+     VALUES (?,'expense',?,?,?,?,?,?,?)`
+  ).run(ledger, date, total, cat.id, memo, debt_id, principal, interest);
+  revalidatePath('/debts'); revalidatePath('/transactions'); revalidatePath('/');
 }
 
 export async function deleteBudget(fd: FormData) {

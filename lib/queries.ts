@@ -1,4 +1,4 @@
-import { getDb, Ledger, Transaction, Category, Recurring, Budget, Person } from './db';
+import { getDb, Ledger, Transaction, Category, Recurring, Budget, Person, Debt } from './db';
 import { clampDay, currentMonth, monthsBack } from './utils';
 
 // node:sqlite returns rows with a null prototype; Next.js refuses to serialize
@@ -405,6 +405,106 @@ export function taxReserve(year?: string): TaxReserve {
     reservedBalance,
     adjustedBusinessBalance: bizBal - reservedBalance,
   };
+}
+
+/* ─────────── Debts (대출) ─────────── */
+
+export interface DebtRow extends Debt {
+  paid_principal: number;
+  paid_interest: number;
+  remaining_principal: number;
+  last_payment_date: string | null;
+  monthly_avg_principal: number;
+  monthsToPayoff: number; // estimated
+}
+
+export function listDebts(): DebtRow[] {
+  const db = getDb();
+  const debts = plain<Debt>(db.prepare('SELECT * FROM debts ORDER BY active DESC, name').all() as any[]);
+  return debts.map(d => {
+    const paid = db.prepare(
+      `SELECT
+        COALESCE(SUM(principal_amount),0) AS p,
+        COALESCE(SUM(interest_amount),0)  AS i,
+        MAX(date) AS lastDate
+       FROM transactions WHERE debt_id=?`
+    ).get(d.id) as any;
+    const remaining = Math.max(0, d.initial_principal - paid.p);
+
+    // monthly average principal from last 3 months of payments on this debt
+    const months = monthsBack(3);
+    const placeholders = months.map(() => '?').join(',');
+    const avgRow = db.prepare(
+      `SELECT COALESCE(SUM(principal_amount),0) AS s FROM transactions
+       WHERE debt_id=? AND substr(date,1,7) IN (${placeholders})`
+    ).get(d.id, ...months) as any;
+    const monthlyAvg = avgRow.s / months.length;
+    const monthsToPayoff = monthlyAvg > 0 ? remaining / monthlyAvg : 0;
+
+    return {
+      ...d,
+      paid_principal: paid.p,
+      paid_interest: paid.i,
+      remaining_principal: remaining,
+      last_payment_date: paid.lastDate || null,
+      monthly_avg_principal: monthlyAvg,
+      monthsToPayoff,
+    };
+  });
+}
+
+export interface DebtSummary {
+  totalRemaining: number;
+  monthPrincipal: number;
+  monthInterest: number;
+  ytdInterest: number;
+  activeCount: number;
+}
+
+export function debtSummary(month: string): DebtSummary {
+  const db = getDb();
+  const year = month.slice(0, 4);
+  const totalRem = db.prepare(
+    `SELECT COALESCE(SUM(d.initial_principal),0) - COALESCE(SUM(t.principal_amount),0) AS rem
+     FROM debts d
+     LEFT JOIN transactions t ON t.debt_id = d.id
+     WHERE d.active = 1`
+  ).get() as any;
+  const m = db.prepare(
+    `SELECT
+      COALESCE(SUM(principal_amount),0) AS p,
+      COALESCE(SUM(interest_amount),0)  AS i
+     FROM transactions WHERE debt_id IS NOT NULL AND substr(date,1,7)=?`
+  ).get(month) as any;
+  const y = db.prepare(
+    `SELECT COALESCE(SUM(interest_amount),0) AS i
+     FROM transactions WHERE debt_id IS NOT NULL AND substr(date,1,4)=?`
+  ).get(year) as any;
+  const active = db.prepare(`SELECT COUNT(*) AS c FROM debts WHERE active=1`).get() as any;
+  return {
+    totalRemaining: Math.max(0, totalRem.rem || 0),
+    monthPrincipal: m.p,
+    monthInterest: m.i,
+    ytdInterest: y.i,
+    activeCount: active.c,
+  };
+}
+
+/* principal-adjusted savings rate: count principal repayments as savings, not expense */
+export function adjustedSavingsRate(month: string): { rate: number; adjustedNet: number; principalRepaid: number } {
+  const db = getDb();
+  const r = db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END),0) AS income,
+      COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense,
+      COALESCE(SUM(CASE WHEN debt_id IS NOT NULL THEN principal_amount ELSE 0 END),0) AS principal
+    FROM transactions WHERE substr(date,1,7)=?
+  `).get(month) as any;
+  // adjusted: principal repayments are treated as savings, so subtract from expense
+  const adjExpense = r.expense - r.principal;
+  const adjNet = r.income - adjExpense;
+  const rate = r.income > 0 ? adjNet / r.income : 0;
+  return { rate, adjustedNet: adjNet, principalRepaid: r.principal };
 }
 
 export function generateRecurring(): number {

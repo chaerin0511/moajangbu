@@ -2,6 +2,7 @@ import {
   monthlyTotals, listBudgets, recentTransactions, generateRecurring,
   balanceAt, projectedMonthEndBalance, financialHealth, savingsRateSeries,
   fixedExpenseBreakdown, emergencyFund, ytdSavings, spendingAnomalies, taxReserve,
+  debtSummary, adjustedSavingsRate,
 } from '@/lib/queries';
 import { currentMonth, formatWon } from '@/lib/utils';
 import Link from 'next/link';
@@ -106,6 +107,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
   const ytd = ytdSavings();
   const anomalies = spendingAnomalies(month);
   const tax = taxReserve();
+  const dbt = debtSummary(month);
+  const adj = adjustedSavingsRate(month);
 
   return (
     <div className="space-y-8">
@@ -171,6 +174,37 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
                 {formatWon(tax.adjustedBusinessBalance)}
               </div>
               <div className="text-xs text-slate-500 mt-1">잔액 - 세금 충당</div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* 대출 요약 */}
+      {dbt.activeCount > 0 && (
+        <section>
+          <div className="flex items-baseline justify-between mb-3">
+            <h2 className="font-semibold">대출 현황</h2>
+            <Link href="/debts" className="text-xs text-slate-500 hover:text-slate-900">관리 →</Link>
+          </div>
+          <div className="grid md:grid-cols-4 gap-3">
+            <div className="card p-4">
+              <div className="label">총 남은 원금</div>
+              <div className="text-xl font-semibold mt-1 tabular-nums">{formatWon(dbt.totalRemaining)}</div>
+              <div className="text-xs text-slate-500 mt-1">활성 {dbt.activeCount}건</div>
+            </div>
+            <div className="card p-4">
+              <div className="label">이번달 원금 상환</div>
+              <div className="text-xl font-semibold mt-1 tabular-nums">{formatWon(dbt.monthPrincipal)}</div>
+              <div className="text-xs text-slate-500 mt-1">저축으로 간주</div>
+            </div>
+            <div className="card p-4">
+              <div className="label">이번달 이자</div>
+              <div className="text-xl font-semibold mt-1 tabular-nums text-rose-600">{formatWon(dbt.monthInterest)}</div>
+            </div>
+            <div className="card p-4">
+              <div className="label">조정 저축률</div>
+              <div className="text-xl font-semibold mt-1 tabular-nums">{pct(adj.rate)}</div>
+              <div className="text-xs text-slate-500 mt-1">원금 상환 포함</div>
             </div>
           </div>
         </section>

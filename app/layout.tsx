@@ -31,11 +31,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </Link>
             <div className="flex gap-1">
               <NavLink href="/">대시보드</NavLink>
-              <NavLink href="/transactions">거래내역</NavLink>
+              <NavLink href="/transactions">거래 입력</NavLink>
+              <NavLink href="/statistics">조회·통계</NavLink>
               <NavLink href="/recurring">고정거래</NavLink>
               <NavLink href="/budgets">예산</NavLink>
               <NavLink href="/categories">카테고리</NavLink>
               <NavLink href="/people">가족</NavLink>
+              <NavLink href="/debts">대출</NavLink>
               <NavLink href="/settings">설정</NavLink>
             </div>
           </div>

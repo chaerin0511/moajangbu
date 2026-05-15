@@ -55,6 +55,29 @@ function init(db: DatabaseSync) {
       relation TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS debts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT '기타',
+      initial_principal INTEGER NOT NULL,
+      interest_rate REAL NOT NULL DEFAULT 0,
+      start_date TEXT NOT NULL,
+      target_end_date TEXT,
+      grace_period_months INTEGER NOT NULL DEFAULT 0,
+      accrued_interest INTEGER NOT NULL DEFAULT 0,
+      last_accrual_date TEXT,
+      mandatory_repay_income INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS debt_rate_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      debt_id INTEGER NOT NULL,
+      effective_date TEXT NOT NULL,
+      rate REAL NOT NULL,
+      FOREIGN KEY(debt_id) REFERENCES debts(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_rate_history_debt ON debt_rate_history(debt_id, effective_date);
     CREATE TABLE IF NOT EXISTS budgets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ledger TEXT NOT NULL,
@@ -69,6 +92,14 @@ function init(db: DatabaseSync) {
   const tryAlter = (sql: string) => { try { db.exec(sql); } catch { /* column already exists */ } };
   tryAlter("ALTER TABLE account_settings ADD COLUMN tax_reserve_rate REAL NOT NULL DEFAULT 0");
   tryAlter("ALTER TABLE transactions ADD COLUMN person_id INTEGER");
+  tryAlter("ALTER TABLE transactions ADD COLUMN debt_id INTEGER");
+  tryAlter("ALTER TABLE debts ADD COLUMN kind TEXT NOT NULL DEFAULT '기타'");
+  tryAlter("ALTER TABLE debts ADD COLUMN grace_period_months INTEGER NOT NULL DEFAULT 0");
+  tryAlter("ALTER TABLE debts ADD COLUMN accrued_interest INTEGER NOT NULL DEFAULT 0");
+  tryAlter("ALTER TABLE debts ADD COLUMN last_accrual_date TEXT");
+  tryAlter("ALTER TABLE debts ADD COLUMN mandatory_repay_income INTEGER NOT NULL DEFAULT 0");
+  tryAlter("ALTER TABLE transactions ADD COLUMN principal_amount INTEGER");
+  tryAlter("ALTER TABLE transactions ADD COLUMN interest_amount INTEGER");
 
   const count = db.prepare('SELECT COUNT(*) as c FROM categories').get() as { c: number };
   if (count.c === 0) {
@@ -126,3 +157,23 @@ export interface Recurring {
 }
 export interface Budget { id: number; ledger: Ledger; category_id: number; month: string; amount: number }
 export interface Person { id: number; name: string; relation: string | null }
+export interface Debt {
+  id: number;
+  name: string;
+  kind: string;
+  initial_principal: number;
+  interest_rate: number;
+  start_date: string;
+  target_end_date: string | null;
+  active: number;
+}
+
+export const DEBT_KINDS = [
+  '학자금(취업후상환)',
+  '학자금(일반)',
+  '신용대출',
+  '주택담보대출',
+  '전세자금대출',
+  '사적대출',
+  '기타',
+] as const;

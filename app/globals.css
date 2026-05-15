@@ -205,3 +205,8 @@ table.pretty tbody tr:hover { background: #f9fafb; }
 .bg-rose-500 { background: var(--expense) !important; }
 
 .divider { height: 1px; background: var(--border); }
+
+/* Hide default disclosure marker on <summary> */
+summary { list-style: none; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+summary::marker { content: ''; }
