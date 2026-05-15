@@ -76,8 +76,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
             {/* 데스크탑 헤더 — 가로 메뉴 */}
             <nav className="hidden sm:block sticky top-0 z-20 bg-white border-b border-slate-200">
-              <div className="max-w-6xl mx-auto px-6 h-16 flex items-center gap-7">
-                <Link href="/" className="font-semibold text-[17px] flex items-center gap-2.5 shrink-0">
+              <div className="max-w-7xl mx-auto px-5 h-16 flex items-center gap-4 lg:gap-6">
+                <Link href="/" className="font-semibold text-[16px] flex items-center gap-2.5 shrink-0">
                   <span className="relative inline-flex w-10 h-10 rounded-xl items-center justify-center text-white text-[18px] font-extrabold tracking-tighter"
                         style={{ background: 'linear-gradient(135deg, #4a98ff 0%, #3182f6 55%, #1b64da 100%)' }}>
                     ₩
@@ -85,10 +85,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   </span>
                   모아장부
                 </Link>
-                <div className="flex gap-1 flex-1">
+                <div className="flex gap-0.5 flex-1 min-w-0">
                   <NavLink href="/">대시보드</NavLink>
-                  <NavLink href="/transactions">거래 입력</NavLink>
-                  <NavLink href="/statistics">조회·통계</NavLink>
+                  <NavLink href="/transactions">거래</NavLink>
+                  <NavLink href="/statistics">통계</NavLink>
                   <NavLink href="/recurring">고정거래</NavLink>
                   <NavLink href="/budgets">예산</NavLink>
                   <NavLink href="/categories">카테고리</NavLink>
