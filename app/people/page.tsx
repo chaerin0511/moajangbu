@@ -2,6 +2,7 @@ import { listPeople, personStats } from '@/lib/queries';
 import { createPerson, deletePerson } from '@/lib/actions';
 import { currentMonth, formatWon } from '@/lib/utils';
 import { currentUserId } from '@/lib/auth-helper';
+import MonthPicker from '@/components/MonthPicker';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,9 +16,8 @@ export default async function Page({ searchParams }: { searchParams: Record<stri
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1>가족 · 사람별 거래</h1>
-        <form className="flex gap-2 items-center">
-          <input type="month" name="month" defaultValue={month} className="input" />
-          <button className="btn-primary">조회</button>
+        <form>
+          <MonthPicker value={month} />
         </form>
       </div>
 

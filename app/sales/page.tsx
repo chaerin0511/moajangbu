@@ -4,6 +4,7 @@ import { formatWon, currentMonth } from '@/lib/utils';
 import { currentUserId } from '@/lib/auth-helper';
 import { getViewMode } from '@/lib/view-mode';
 import Link from 'next/link';
+import MonthPicker from '@/components/MonthPicker';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '사업자 매출' };
@@ -44,10 +45,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Record
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1>사업자 매출 · 부가세</h1>
         <form className="flex items-center gap-2 text-sm">
-          <label className="flex items-center gap-1">
-            <span className="text-slate-500">월</span>
-            <input type="month" name="month" defaultValue={month} className="input" />
-          </label>
+          <MonthPicker value={month} />
           <label className="flex items-center gap-1">
             <span className="text-slate-500">연도</span>
             <input type="number" name="year" defaultValue={year} min="2020" max="2100" className="input w-24" />

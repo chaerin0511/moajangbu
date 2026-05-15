@@ -9,6 +9,7 @@ import { currentUserId } from '@/lib/auth-helper';
 import { getViewMode, type ViewMode } from '@/lib/view-mode';
 import Link from 'next/link';
 import BusinessDashboard from './_business-dashboard';
+import MonthPicker from '@/components/MonthPicker';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,11 +43,11 @@ function HealthHero({ month, rate, net, vsLastMonth }: { month: string; rate: nu
     { label: '위험', color: 'text-rose-600', sub: '이번 달 적자입니다.' };
 
   return (
-    <section className="card p-6">
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
+    <section className="card p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-4 flex-col sm:flex-row">
+        <div className="min-w-0">
           <div className="label">{month}</div>
-          <div className="flex items-baseline gap-3 mt-2">
+          <div className="flex items-baseline gap-3 mt-2 flex-wrap">
             <span className={`text-2xl font-semibold ${tier.color}`}>{tier.label}</span>
             <span className="text-sm text-slate-500">저축률 <b className="text-slate-900 tabular-nums">{pct(rate)}</b></span>
           </div>
@@ -56,9 +57,9 @@ function HealthHero({ month, rate, net, vsLastMonth }: { month: string; rate: nu
             <span className="ml-3 text-slate-500">전월 대비 <span className={vsLastMonth >= 0 ? 'text-emerald-600' : 'text-rose-500'}>{vsLastMonth >= 0 ? '+' : ''}{formatWon(vsLastMonth)}</span></span>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Link href="/transactions" className="btn-primary">거래 추가</Link>
-          <Link href="/settings" className="btn-ghost">잔액 설정</Link>
+        <div className="flex gap-2 w-full sm:w-auto shrink-0">
+          <Link href="/transactions" className="btn-primary flex-1 sm:flex-initial">거래 추가</Link>
+          <Link href="/settings" className="btn-ghost flex-1 sm:flex-initial">잔액 설정</Link>
         </div>
       </div>
     </section>
@@ -99,10 +100,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
   if (view === 'business') {
     return (
       <div className="space-y-8">
-        <form className="flex items-center justify-end gap-2">
-          <span className="label">조회 월</span>
-          <input type="month" name="month" defaultValue={month} className="input" />
-          <button className="btn-primary">보기</button>
+        <form className="flex items-center justify-end">
+          <MonthPicker value={month} />
         </form>
         <BusinessDashboard userId={userId} month={month} />
       </div>
@@ -139,10 +138,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
 
   return (
     <div className="space-y-8">
-      <form className="flex items-center justify-end gap-2">
-        <span className="label">조회 월</span>
-        <input type="month" name="month" defaultValue={month} className="input" />
-        <button className="btn-primary">보기</button>
+      <form className="flex items-center justify-end">
+        <MonthPicker value={month} />
       </form>
 
       {viewMode !== 'business' && (
@@ -284,16 +281,16 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
           <p className="text-xs text-slate-500 mb-3">최근 3개월 평균 대비 30% 이상 차이 나는 카테고리</p>
           <div className="space-y-2">
             {anomaliesView.slice(0, 6).map(a => (
-              <div key={`${a.ledger}-${a.category_id}`} className="flex items-center justify-between text-sm">
-                <span>
-                  <span className={`chip mr-2 ${a.ledger === 'personal' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
+              <div key={`${a.ledger}-${a.category_id}`} className="flex items-start justify-between gap-3 text-sm">
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className={`chip shrink-0 ${a.ledger === 'personal' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
                     {a.ledger === 'personal' ? '개인' : '사업자'}
                   </span>
-                  {a.category_name}
+                  <span className="truncate">{a.category_name}</span>
                 </span>
-                <span className="tabular-nums text-slate-700">
-                  {formatWon(a.current)} <span className="text-slate-400">vs 평균 {formatWon(Math.round(a.average))}</span>
-                  <span className={`ml-2 font-semibold ${a.deltaPct >= 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                <span className="tabular-nums text-slate-700 text-right shrink-0">
+                  <span className="block sm:inline">{formatWon(a.current)} <span className="text-slate-400 hidden sm:inline">vs 평균 {formatWon(Math.round(a.average))}</span></span>
+                  <span className={`block sm:inline sm:ml-2 font-semibold ${a.deltaPct >= 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                     {a.deltaPct >= 0 ? '+' : ''}{(a.deltaPct * 100).toFixed(0)}%
                   </span>
                 </span>
@@ -312,40 +309,68 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
         <h2 className="font-semibold mb-3">{month} 고정지출 분해</h2>
         {fixedView.length === 0 ? (
           <p className="text-sm text-slate-500 py-6 text-center">고정지출이 없습니다.</p>
-        ) : (
-          <table className="pretty">
-            <thead>
-              <tr>
-                <th>장부</th><th>카테고리</th><th className="text-right">건수</th><th className="text-right">금액</th><th className="text-right">비중</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(() => {
-                const total = fixedView.reduce((s, x) => s + x.amount, 0);
-                return fixedView.map((x, i) => (
-                  <tr key={i}>
-                    <td>
-                      <span className={`chip ${x.ledger === 'personal' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {x.ledger === 'personal' ? '개인' : '사업자'}
-                      </span>
-                    </td>
-                    <td>{x.category_name || '(미지정)'}</td>
-                    <td className="text-right tabular-nums">{x.count}</td>
-                    <td className="text-right tabular-nums font-medium">{formatWon(x.amount)}</td>
-                    <td className="text-right tabular-nums text-slate-500">{total > 0 ? `${((x.amount / total) * 100).toFixed(0)}%` : '-'}</td>
+        ) : (() => {
+          const total = fixedView.reduce((s, x) => s + x.amount, 0);
+          return (
+            <>
+              {/* 모바일 카드 */}
+              <div className="sm:hidden space-y-2">
+                {fixedView.map((x, i) => {
+                  const share = total > 0 ? (x.amount / total) * 100 : 0;
+                  return (
+                    <div key={i} className="rounded-xl bg-slate-50 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`chip shrink-0 ${x.ledger === 'personal' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {x.ledger === 'personal' ? '개인' : '사업자'}
+                          </span>
+                          <span className="truncate text-sm">{x.category_name || '(미지정)'}</span>
+                        </div>
+                        <span className="text-sm font-medium tabular-nums shrink-0">{formatWon(x.amount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-slate-500 mt-1.5 tabular-nums">
+                        <span>{x.count}건</span>
+                        <span>{share.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="flex items-center justify-between pt-2 px-1 text-sm font-semibold">
+                  <span>합계</span>
+                  <span className="tabular-nums">{formatWon(total)}</span>
+                </div>
+              </div>
+              {/* 데스크탑 테이블 */}
+              <table className="pretty hidden sm:table">
+                <thead>
+                  <tr>
+                    <th>장부</th><th>카테고리</th><th className="text-right">건수</th><th className="text-right">금액</th><th className="text-right">비중</th>
                   </tr>
-                ));
-              })()}
-              <tr>
-                <td colSpan={3} className="text-right font-semibold">합계</td>
-                <td className="text-right tabular-nums font-semibold">
-                  {formatWon(fixedView.reduce((s, x) => s + x.amount, 0))}
-                </td>
-                <td></td>
-              </tr>
-            </tbody>
-          </table>
-        )}
+                </thead>
+                <tbody>
+                  {fixedView.map((x, i) => (
+                    <tr key={i}>
+                      <td>
+                        <span className={`chip ${x.ledger === 'personal' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {x.ledger === 'personal' ? '개인' : '사업자'}
+                        </span>
+                      </td>
+                      <td>{x.category_name || '(미지정)'}</td>
+                      <td className="text-right tabular-nums">{x.count}</td>
+                      <td className="text-right tabular-nums font-medium">{formatWon(x.amount)}</td>
+                      <td className="text-right tabular-nums text-slate-500">{total > 0 ? `${((x.amount / total) * 100).toFixed(0)}%` : '-'}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td colSpan={3} className="text-right font-semibold">합계</td>
+                    <td className="text-right tabular-nums font-semibold">{formatWon(total)}</td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </>
+          );
+        })()}
       </section>
         );
       })()}
@@ -470,36 +495,66 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
           return recentView.length === 0 ? (
           <p className="text-sm text-slate-500 py-6 text-center">거래 내역이 없습니다.</p>
         ) : (
-          <table className="pretty">
-            <thead>
-              <tr><th>날짜</th><th>장부</th><th>유형</th><th>카테고리</th><th>메모</th><th className="text-right">금액</th></tr>
-            </thead>
-            <tbody>
-              {recentView.map(r => (
-                <tr key={r.id}>
-                  <td className="text-slate-600 tabular-nums">{r.date}</td>
-                  <td>
-                    <span className={`chip ${(r.ledger === 'personal' || r.from_ledger === 'personal') ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {r.type === 'transfer'
-                        ? `${r.from_ledger === 'personal' ? '개인' : '사업자'} → ${r.to_ledger === 'personal' ? '개인' : '사업자'}`
-                        : (r.ledger === 'personal' ? '개인' : '사업자')}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`chip ${r.type === 'income' ? 'bg-emerald-100 text-emerald-700' : r.type === 'expense' ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-700'}`}>
-                      {r.type === 'income' ? '수입' : r.type === 'expense' ? '지출' : '이체'}
-                    </span>
-                    {r.recurring_id && <span className="chip ml-1 bg-slate-100 text-slate-600">고정</span>}
-                  </td>
-                  <td>{r.category_name || '-'}</td>
-                  <td className="text-slate-500">{r.memo || ''}</td>
-                  <td className={`text-right font-medium tabular-nums ${r.type === 'income' ? 'text-emerald-600' : r.type === 'expense' ? 'text-rose-600' : 'text-slate-700'}`}>
-                    {formatWon(r.amount)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            {/* 모바일 카드 */}
+            <ul className="sm:hidden divide-y divide-slate-100 -mx-1">
+              {recentView.map(r => {
+                const ledgerLabel = r.type === 'transfer'
+                  ? `${r.from_ledger === 'personal' ? '개인' : '사업자'} → ${r.to_ledger === 'personal' ? '개인' : '사업자'}`
+                  : (r.ledger === 'personal' ? '개인' : '사업자');
+                const ledgerTone = (r.ledger === 'personal' || r.from_ledger === 'personal') ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700';
+                const typeTone = r.type === 'income' ? 'bg-emerald-100 text-emerald-700' : r.type === 'expense' ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-700';
+                const amountTone = r.type === 'income' ? 'text-emerald-600' : r.type === 'expense' ? 'text-rose-600' : 'text-slate-700';
+                return (
+                  <li key={r.id} className="py-3 px-1 flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className={`chip ${ledgerTone}`}>{ledgerLabel}</span>
+                        <span className={`chip ${typeTone}`}>{r.type === 'income' ? '수입' : r.type === 'expense' ? '지출' : '이체'}</span>
+                        {r.recurring_id && <span className="chip bg-slate-100 text-slate-600">고정</span>}
+                      </div>
+                      <div className="mt-1.5 text-sm text-slate-900 truncate">{r.category_name || '-'}</div>
+                      <div className="mt-0.5 text-xs text-slate-500 tabular-nums truncate">
+                        {r.date}{r.memo ? ` · ${r.memo}` : ''}
+                      </div>
+                    </div>
+                    <span className={`font-semibold tabular-nums shrink-0 ${amountTone}`}>{formatWon(r.amount)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            {/* 데스크탑 테이블 */}
+            <table className="pretty hidden sm:table">
+              <thead>
+                <tr><th>날짜</th><th>장부</th><th>유형</th><th>카테고리</th><th>메모</th><th className="text-right">금액</th></tr>
+              </thead>
+              <tbody>
+                {recentView.map(r => (
+                  <tr key={r.id}>
+                    <td className="text-slate-600 tabular-nums">{r.date}</td>
+                    <td>
+                      <span className={`chip ${(r.ledger === 'personal' || r.from_ledger === 'personal') ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {r.type === 'transfer'
+                          ? `${r.from_ledger === 'personal' ? '개인' : '사업자'} → ${r.to_ledger === 'personal' ? '개인' : '사업자'}`
+                          : (r.ledger === 'personal' ? '개인' : '사업자')}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`chip ${r.type === 'income' ? 'bg-emerald-100 text-emerald-700' : r.type === 'expense' ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-700'}`}>
+                        {r.type === 'income' ? '수입' : r.type === 'expense' ? '지출' : '이체'}
+                      </span>
+                      {r.recurring_id && <span className="chip ml-1 bg-slate-100 text-slate-600">고정</span>}
+                    </td>
+                    <td>{r.category_name || '-'}</td>
+                    <td className="text-slate-500">{r.memo || ''}</td>
+                    <td className={`text-right font-medium tabular-nums ${r.type === 'income' ? 'text-emerald-600' : r.type === 'expense' ? 'text-rose-600' : 'text-slate-700'}`}>
+                      {formatWon(r.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         );
         })()}
       </section>

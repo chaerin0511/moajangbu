@@ -4,6 +4,7 @@ import { currentMonth, formatWon } from '@/lib/utils';
 import BudgetForm from '@/components/BudgetForm';
 import { currentUserId } from '@/lib/auth-helper';
 import { getViewMode } from '@/lib/view-mode';
+import MonthPicker from '@/components/MonthPicker';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +18,8 @@ export default async function Page({ searchParams }: { searchParams: Record<stri
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">예산</h1>
-      <form className="card p-3 flex gap-2 items-end">
-        <label className="flex flex-col gap-1"><span className="label">월</span>
-          <input type="month" name="month" defaultValue={month} className="input" />
-        </label>
-        <button className="btn-primary">조회</button>
+      <form>
+        <MonthPicker value={month} />
       </form>
       <BudgetForm categories={categories} month={month} action={upsertBudget} />
       <div className="card overflow-hidden">
