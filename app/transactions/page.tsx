@@ -6,14 +6,23 @@ import BulkTransactionForm from '@/components/BulkTransactionForm';
 import Disclosure from '@/components/Disclosure';
 import Link from 'next/link';
 import { currentUserId } from '@/lib/auth-helper';
+import { getViewMode } from '@/lib/view-mode';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
   const userId = await currentUserId();
-  const categories = await listCategories(userId);
+  const view = getViewMode();
+  const categories = await listCategories(userId, view !== 'all' ? view : undefined);
   const people = await listPeople(userId);
-  const recent = await recentTransactions(userId, 20);
+  const recentAll = await recentTransactions(userId, 40);
+  const recent = view === 'all'
+    ? recentAll.slice(0, 20)
+    : recentAll.filter((r: any) =>
+        r.type === 'transfer'
+          ? (r.from_ledger === view || r.to_ledger === view)
+          : r.ledger === view
+      ).slice(0, 20);
 
   return (
     <div className="space-y-6">

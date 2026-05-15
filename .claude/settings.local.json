@@ -4,7 +4,8 @@
       "Bash(npx tsc *)",
       "Bash(node *)",
       "PowerShell(Get-ChildItem C:\\\\Users\\\\rcl05\\\\Desktop\\\\dev\\\\study\\\\ledger\\\\lib -File | ForEach-Object { $_.FullName }; Get-ChildItem C:\\\\Users\\\\rcl05\\\\Desktop\\\\dev\\\\study\\\\ledger -File | ForEach-Object { $_.FullName })",
-      "Bash(git config *)"
+      "Bash(git config *)",
+      "PowerShell(npx tsc --noEmit)"
     ]
   }
 }

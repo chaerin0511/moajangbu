@@ -3,14 +3,18 @@ import { deleteTransaction } from '@/lib/actions';
 import { formatWon } from '@/lib/utils';
 import Link from 'next/link';
 import { currentUserId } from '@/lib/auth-helper';
+import { getViewMode } from '@/lib/view-mode';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const userId = await currentUserId();
-  const categories = await listCategories(userId);
-  const txs = await listTransactions(userId, searchParams as any);
-  const filterLedger = searchParams.ledger || '';
+  const view = getViewMode();
+  const categories = await listCategories(userId, view !== 'all' ? view : undefined);
+  const effectiveFilters: any = { ...searchParams };
+  if (view !== 'all') effectiveFilters.ledger = view;
+  const txs = await listTransactions(userId, effectiveFilters);
+  const filterLedger = (view !== 'all' ? view : searchParams.ledger) || '';
   const filterType = searchParams.type || '';
   const filterMonth = searchParams.month || '';
   const filterCat = searchParams.category_id || '';
@@ -28,9 +32,15 @@ export default async function Page({ searchParams }: { searchParams: Record<stri
       </div>
 
       <form className="card p-3 flex flex-wrap gap-2 text-sm items-center">
-        <select name="ledger" defaultValue={filterLedger} className="select">
-          <option value="">전체 장부</option><option value="personal">개인</option><option value="business">사업자</option>
-        </select>
+        {view === 'all' ? (
+          <select name="ledger" defaultValue={filterLedger} className="select">
+            <option value="">전체 장부</option><option value="personal">개인</option><option value="business">사업자</option>
+          </select>
+        ) : (
+          <span className={`chip ${view === 'personal' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
+            {view === 'personal' ? '개인 모드' : '사업자 모드'}
+          </span>
+        )}
         <select name="type" defaultValue={filterType} className="select">
           <option value="">전체 유형</option><option value="income">수입</option><option value="expense">지출</option><option value="transfer">이체</option>
         </select>

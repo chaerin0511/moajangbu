@@ -5,6 +5,7 @@ import { formatWon, todayISO } from '@/lib/utils';
 import RecurringForm from '@/components/RecurringForm';
 import { revalidatePath } from 'next/cache';
 import { currentUserId } from '@/lib/auth-helper';
+import { getViewMode } from '@/lib/view-mode';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +19,16 @@ async function runGenerate() {
 
 export default async function Page() {
   const userId = await currentUserId();
-  const rules = await listRecurring(userId);
-  const categories = await listCategories(userId);
+  const view = getViewMode();
+  const allRules = await listRecurring(userId);
+  const rules = view === 'all'
+    ? allRules
+    : allRules.filter(r =>
+        r.type === 'transfer'
+          ? (r.from_ledger === view || r.to_ledger === view)
+          : r.ledger === view
+      );
+  const categories = await listCategories(userId, view !== 'all' ? view : undefined);
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">

@@ -6,6 +6,7 @@ import {
 } from '@/lib/queries';
 import { currentMonth, formatWon } from '@/lib/utils';
 import { currentUserId } from '@/lib/auth-helper';
+import { getViewMode } from '@/lib/view-mode';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -91,6 +92,7 @@ function SavingsRateChart({ data }: { data: { month: string; rate: number }[] })
 
 export default async function Dashboard({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const userId = await currentUserId();
+  const view = getViewMode();
   const month = searchParams.month || currentMonth();
   // 모든 집계 쿼리를 병렬 실행 (이전 17번 순차 → 1라운드 병렬)
   const [
@@ -127,7 +129,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
         <button className="btn-primary">보기</button>
       </form>
 
-      <HealthHero month={month} rate={h.savingsRate} net={h.net} vsLastMonth={h.vsLastMonth.net} />
+      {view !== 'business' && (
+        <HealthHero month={month} rate={h.savingsRate} net={h.net} vsLastMonth={h.vsLastMonth.net} />
+      )}
 
       {/* 잔액 */}
       <section>
@@ -136,7 +140,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
           {[
             { key: 'personal', label: '개인', bal: balPersonal, proj: projPersonal, tone: 'bg-indigo-100 text-indigo-700' },
             { key: 'business', label: '사업자', bal: balBusiness, proj: projBusiness, tone: 'bg-amber-100 text-amber-700' },
-          ].map(a => {
+          ].filter(a => view === 'all' || a.key === view).map(a => {
             const diff = a.proj - a.bal;
             return (
               <div key={a.key} className="card p-5">
@@ -158,7 +162,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
       </section>
 
       {/* 사업자 세금 충당금 */}
-      {tax.rate > 0 && (
+      {tax.rate > 0 && view !== 'personal' && (
         <section>
           <h2 className="font-semibold mb-3">사업자 세금 충당금 (올해 누적)</h2>
           <div className="grid md:grid-cols-4 gap-3">
@@ -222,6 +226,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
       {/* 비상금 & 연간 누적 */}
       <section>
         <div className="grid md:grid-cols-2 gap-3">
+          {view !== 'business' && (
           <div className="card p-5">
             <div className="flex items-center justify-between">
               <h3>비상금</h3>
@@ -238,6 +243,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
               월평균 고정지출 {formatWon(Math.round(ef.monthlyFixed))} · 권장 6개월
             </div>
           </div>
+          )}
           <div className="card p-5">
             <div className="flex items-center justify-between">
               <h3>{new Date().getFullYear()}년 누적 저축</h3>
@@ -254,12 +260,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
       </section>
 
       {/* 이상 지출 감지 */}
-      {anomalies.length > 0 && (
+      {(() => {
+        const anomaliesView = view === 'all' ? anomalies : anomalies.filter(a => a.ledger === view);
+        return anomaliesView.length > 0 && (
         <section className="card p-5">
           <h2 className="font-semibold mb-3">이상 지출 감지</h2>
           <p className="text-xs text-slate-500 mb-3">최근 3개월 평균 대비 30% 이상 차이 나는 카테고리</p>
           <div className="space-y-2">
-            {anomalies.slice(0, 6).map(a => (
+            {anomaliesView.slice(0, 6).map(a => (
               <div key={`${a.ledger}-${a.category_id}`} className="flex items-center justify-between text-sm">
                 <span>
                   <span className={`chip mr-2 ${a.ledger === 'personal' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -277,12 +285,16 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
             ))}
           </div>
         </section>
-      )}
+        );
+      })()}
 
       {/* 고정지출 분해 */}
+      {(() => {
+        const fixedView = view === 'all' ? fixedBreakdown : fixedBreakdown.filter(x => x.ledger === view);
+        return (
       <section className="card p-5">
         <h2 className="font-semibold mb-3">{month} 고정지출 분해</h2>
-        {fixedBreakdown.length === 0 ? (
+        {fixedView.length === 0 ? (
           <p className="text-sm text-slate-500 py-6 text-center">고정지출이 없습니다.</p>
         ) : (
           <table className="pretty">
@@ -293,8 +305,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
             </thead>
             <tbody>
               {(() => {
-                const total = fixedBreakdown.reduce((s, x) => s + x.amount, 0);
-                return fixedBreakdown.map((x, i) => (
+                const total = fixedView.reduce((s, x) => s + x.amount, 0);
+                return fixedView.map((x, i) => (
                   <tr key={i}>
                     <td>
                       <span className={`chip ${x.ledger === 'personal' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -311,7 +323,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
               <tr>
                 <td colSpan={3} className="text-right font-semibold">합계</td>
                 <td className="text-right tabular-nums font-semibold">
-                  {formatWon(fixedBreakdown.reduce((s, x) => s + x.amount, 0))}
+                  {formatWon(fixedView.reduce((s, x) => s + x.amount, 0))}
                 </td>
                 <td></td>
               </tr>
@@ -319,6 +331,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
           </table>
         )}
       </section>
+        );
+      })()}
 
       {/* 4지표 */}
       <section>
@@ -361,6 +375,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
       <section>
         <h2 className="font-semibold mb-3">장부별 요약</h2>
         <div className="grid md:grid-cols-2 gap-3">
+          {view !== 'business' && (
           <div className="card p-4">
             <div className="flex items-center gap-2 mb-2"><span className="chip bg-indigo-100 text-indigo-700">개인</span></div>
             <div className="grid grid-cols-3 gap-2 text-sm">
@@ -369,6 +384,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
               <div><div className="label">순익</div><div className={`font-semibold tabular-nums ${t.personal.net < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatWon(t.personal.net)}</div></div>
             </div>
           </div>
+          )}
+          {view !== 'personal' && (
           <div className="card p-4">
             <div className="flex items-center gap-2 mb-2"><span className="chip bg-amber-100 text-amber-700">사업자</span></div>
             <div className="grid grid-cols-3 gap-2 text-sm">
@@ -377,6 +394,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
               <div><div className="label">순익</div><div className={`font-semibold tabular-nums ${t.business.net < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatWon(t.business.net)}</div></div>
             </div>
           </div>
+          )}
         </div>
       </section>
 
@@ -386,11 +404,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
           <h2 className="font-semibold">이번 달 예산</h2>
           <Link href="/budgets" className="text-xs text-slate-500 hover:text-slate-900">관리 →</Link>
         </div>
-        {budgets.length === 0 ? (
+        {(() => {
+          const budgetsView = view === 'all' ? budgets : budgets.filter(b => b.ledger === view);
+          return budgetsView.length === 0 ? (
           <p className="text-sm text-slate-500 py-6 text-center">설정된 예산이 없습니다.</p>
         ) : (
           <div className="space-y-3">
-            {budgets.map(b => {
+            {budgetsView.map(b => {
               const p = b.amount > 0 ? (b.spent / b.amount) * 100 : 0;
               const color = p > 100 ? 'bg-rose-500' : p > 80 ? 'bg-amber-500' : 'bg-emerald-500';
               return (
@@ -413,7 +433,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
               );
             })}
           </div>
-        )}
+        );
+        })()}
       </section>
 
       {/* 최근 거래 */}
@@ -422,7 +443,15 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
           <h2 className="font-semibold">최근 거래</h2>
           <Link href="/transactions" className="text-xs text-slate-500 hover:text-slate-900">전체보기 →</Link>
         </div>
-        {recent.length === 0 ? (
+        {(() => {
+          const recentView = view === 'all'
+            ? recent
+            : recent.filter(r =>
+                r.type === 'transfer'
+                  ? (r.from_ledger === view || r.to_ledger === view)
+                  : r.ledger === view
+              );
+          return recentView.length === 0 ? (
           <p className="text-sm text-slate-500 py-6 text-center">거래 내역이 없습니다.</p>
         ) : (
           <table className="pretty">
@@ -430,7 +459,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
               <tr><th>날짜</th><th>장부</th><th>유형</th><th>카테고리</th><th>메모</th><th className="text-right">금액</th></tr>
             </thead>
             <tbody>
-              {recent.map(r => (
+              {recentView.map(r => (
                 <tr key={r.id}>
                   <td className="text-slate-600 tabular-nums">{r.date}</td>
                   <td>
@@ -455,7 +484,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
               ))}
             </tbody>
           </table>
-        )}
+        );
+        })()}
       </section>
     </div>
   );

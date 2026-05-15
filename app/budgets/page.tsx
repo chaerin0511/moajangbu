@@ -3,14 +3,17 @@ import { upsertBudget, deleteBudget } from '@/lib/actions';
 import { currentMonth, formatWon } from '@/lib/utils';
 import BudgetForm from '@/components/BudgetForm';
 import { currentUserId } from '@/lib/auth-helper';
+import { getViewMode } from '@/lib/view-mode';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const userId = await currentUserId();
+  const view = getViewMode();
   const month = searchParams.month || currentMonth();
-  const categories = await listCategories(userId);
-  const budgets = await listBudgets(userId, month);
+  const categories = await listCategories(userId, view !== 'all' ? view : undefined);
+  const allBudgets = await listBudgets(userId, month);
+  const budgets = view === 'all' ? allBudgets : allBudgets.filter(b => b.ledger === view);
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">예산</h1>

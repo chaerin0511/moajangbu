@@ -6,6 +6,8 @@ import BottomTabs from '@/components/BottomTabs';
 import { auth, signOut } from '@/auth';
 import { ensureDb } from '@/lib/db';
 import { ALL_NAV_ITEMS, parseNavOrder, navLabel, navIcon } from '@/lib/nav-items';
+import ViewModeToggle from '@/components/ViewModeToggle';
+import { getViewMode } from '@/lib/view-mode';
 
 export const metadata: Metadata = {
   title: { default: '모아장부 · 가계와 사업을 한곳에', template: '%s · 모아장부' },
@@ -46,6 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     } catch { /* fall back to session */ }
   }
   const initial = String(displayName || session?.user?.name || '?').charAt(0);
+  const viewMode = getViewMode();
   const navOrder = parseNavOrder(navOrderRaw);
   const allowed = new Set(ALL_NAV_ITEMS.map(i => i.href));
   const mainItems = navOrder.filter(h => allowed.has(h));
@@ -59,10 +62,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body>
         {session && (
           <>
-            {/* 모바일 헤더 — 로고 + 아바타 */}
+            {/* 모바일 헤더 — 로고 + 아바타 + 모드 토글 */}
             <header className="sm:hidden sticky top-0 z-20 bg-white border-b border-slate-200">
               <div className="px-4 h-14 flex items-center justify-between">
-                <Link href="/" className="font-semibold text-[16px] flex items-center gap-2.5">
+                <Link href="/" className="font-semibold text-[16px] flex items-center gap-2.5 shrink-0">
                   <span className="relative inline-flex w-9 h-9 rounded-xl items-center justify-center text-white text-[16px] font-extrabold tracking-tighter"
                         style={{ background: 'linear-gradient(135deg, #4a98ff 0%, #3182f6 55%, #1b64da 100%)' }}>
                     ₩
@@ -70,8 +73,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   </span>
                   모아장부
                 </Link>
-                <Link href="/profile" className="flex items-center gap-2">
-                  <span className="text-sm text-slate-700 max-w-[120px] truncate">{displayName || '사용자'}</span>
+                <Link href="/profile" className="flex items-center shrink-0">
                   {displayImage ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={displayImage} alt="" className="w-9 h-9 rounded-full" />
@@ -81,6 +83,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     </span>
                   )}
                 </Link>
+              </div>
+              <div className="px-4 pb-2 flex justify-center">
+                <ViewModeToggle current={viewMode} />
               </div>
             </header>
 
@@ -102,6 +107,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <NavLink href="/more">더보기</NavLink>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
+                  <ViewModeToggle current={viewMode} />
                   <Link href="/profile" className="flex items-center gap-2.5 hover:opacity-80">
                     {displayImage ? (
                       // eslint-disable-next-line @next/next/no-img-element

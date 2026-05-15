@@ -4,6 +4,14 @@ import { revalidatePath } from 'next/cache';
 import { currentUserId } from './auth-helper';
 import { signOut } from '@/auth';
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
+
+export async function setViewMode(fd: FormData) {
+  const v = String(fd.get('mode') || 'all');
+  if (v !== 'all' && v !== 'personal' && v !== 'business') return;
+  cookies().set('ledger_view', v, { path: '/', maxAge: 60 * 60 * 24 * 365 });
+  revalidatePath('/', 'layout');
+}
 
 export async function updateProfileName(fd: FormData) {
   const userId = await currentUserId();

@@ -2,6 +2,7 @@ import { salesSummary, salesByQuarter, salesByCategory, salesByMonthSeries, rece
 import { addSale, deleteTransaction } from '@/lib/actions';
 import { formatWon, currentMonth } from '@/lib/utils';
 import { currentUserId } from '@/lib/auth-helper';
+import { getViewMode } from '@/lib/view-mode';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Record
   const month = searchParams.month || currentMonth();
   const year = searchParams.year || month.slice(0, 4);
   const userId = await currentUserId();
+  const view = getViewMode();
 
   const [summary, quarters, byCategory, monthSeries, recent, categories] = await Promise.all([
     salesSummary(userId, month),
@@ -34,6 +36,11 @@ export default async function SalesPage({ searchParams }: { searchParams: Record
 
   return (
     <div className="space-y-6 pb-8">
+      {view === 'personal' && (
+        <div className="card p-3 text-sm text-slate-600 bg-amber-50">
+          지금 개인 모드입니다 — 매출 페이지는 사업자 데이터입니다.
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1>사업자 매출 · 부가세</h1>
         <form className="flex items-center gap-2 text-sm">
