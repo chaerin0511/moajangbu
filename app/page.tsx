@@ -10,6 +10,7 @@ import { getViewMode, type ViewMode } from '@/lib/view-mode';
 import Link from 'next/link';
 import BusinessDashboard from './_business-dashboard';
 import MonthPicker from '@/components/MonthPicker';
+import SectionHeader, { Icon } from '@/components/SectionHeader';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,13 +38,14 @@ function StatCard({ label, value, sub, tone = 'slate' }: { label: string; value:
 
 function HealthHero({ month, rate, net, vsLastMonth }: { month: string; rate: number; net: number; vsLastMonth: number }) {
   const tier =
-    rate >= 0.2 ? { label: '건강', color: 'text-emerald-600', sub: '저축률이 안전 구간입니다.' } :
-    rate >= 0.05 ? { label: '보통', color: 'text-amber-600', sub: '저축 여력은 있지만 빠듯합니다.' } :
-    rate >= 0 ? { label: '주의', color: 'text-rose-500', sub: '거의 남지 않습니다. 변동 소비를 점검하세요.' } :
-    { label: '위험', color: 'text-rose-600', sub: '이번 달 적자입니다.' };
+    rate >= 0.2 ? { label: '건강', color: 'text-emerald-600', sub: '저축률이 안전 구간입니다.', stripe: 'from-emerald-400 to-emerald-600' } :
+    rate >= 0.05 ? { label: '보통', color: 'text-amber-600', sub: '저축 여력은 있지만 빠듯합니다.', stripe: 'from-amber-400 to-amber-600' } :
+    rate >= 0 ? { label: '주의', color: 'text-rose-500', sub: '거의 남지 않습니다. 변동 소비를 점검하세요.', stripe: 'from-rose-400 to-rose-500' } :
+    { label: '위험', color: 'text-rose-600', sub: '이번 달 적자입니다.', stripe: 'from-rose-500 to-rose-700' };
 
   return (
-    <section className="card p-5 sm:p-6">
+    <section className="card relative overflow-hidden p-5 sm:p-6">
+      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b ${tier.stripe}`} />
       <div className="flex items-start justify-between gap-4 flex-col sm:flex-row">
         <div className="min-w-0">
           <div className="label">{month}</div>
@@ -148,15 +150,16 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
 
       {/* 잔액 */}
       <section>
-        <h2 className="font-semibold mb-3">계좌 잔액</h2>
+        <SectionHeader icon={Icon.wallet} tone="blue" title="계좌 잔액" />
         <div className="grid md:grid-cols-2 gap-3">
           {[
-            { key: 'personal', label: '개인', bal: balPersonal, proj: projPersonal, tone: 'bg-indigo-100 text-indigo-700' },
-            { key: 'business', label: '사업자', bal: balBusiness, proj: projBusiness, tone: 'bg-amber-100 text-amber-700' },
+            { key: 'personal', label: '개인', bal: balPersonal, proj: projPersonal, tone: 'bg-indigo-100 text-indigo-700', stripe: 'bg-indigo-500' },
+            { key: 'business', label: '사업자', bal: balBusiness, proj: projBusiness, tone: 'bg-amber-100 text-amber-700', stripe: 'bg-amber-500' },
           ].filter(a => view === 'all' || a.key === view).map(a => {
             const diff = a.proj - a.bal;
             return (
-              <div key={a.key} className="card p-5">
+              <div key={a.key} className="card relative overflow-hidden p-5">
+                <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 ${a.stripe}`} />
                 <div className="flex items-center justify-between mb-2">
                   <span className={`chip ${a.tone}`}>{a.label}</span>
                   <Link href="/settings" className="text-xs text-slate-400 hover:text-slate-700">시작잔액 설정</Link>
@@ -177,7 +180,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
       {/* 사업자 세금 충당금 */}
       {tax.rate > 0 && view !== 'personal' && (
         <section>
-          <h2 className="font-semibold mb-3">사업자 세금 충당금 (올해 누적)</h2>
+          <SectionHeader icon={Icon.receipt} tone="amber" title="사업자 세금 충당금 (올해 누적)" />
           <div className="grid md:grid-cols-4 gap-3">
             <div className="card p-4">
               <div className="label">올해 사업 매출</div>
@@ -208,10 +211,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
       {/* 대출 요약 */}
       {dbt.activeCount > 0 && (
         <section>
-          <div className="flex items-baseline justify-between mb-3">
-            <h2 className="font-semibold">대출 현황</h2>
-            <Link href="/debts" className="text-xs text-slate-500 hover:text-slate-900">관리 →</Link>
-          </div>
+          <SectionHeader
+            icon={Icon.card}
+            tone="rose"
+            title="대출 현황"
+            right={<Link href="/debts" className="text-xs text-slate-500 hover:text-slate-900">관리 →</Link>}
+          />
           <div className="grid md:grid-cols-4 gap-3">
             <div className="card p-4">
               <div className="label">총 남은 원금</div>
@@ -238,6 +243,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
 
       {/* 비상금 & 연간 누적 */}
       <section>
+        <SectionHeader icon={Icon.shield} tone="emerald" title="비상금 · 연간 누적" />
         <div className="grid md:grid-cols-2 gap-3">
           {viewMode !== 'business' && (
           <div className="card p-5">
@@ -277,7 +283,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
         const anomaliesView = view === 'all' ? anomalies : anomalies.filter(a => a.ledger === view);
         return anomaliesView.length > 0 && (
         <section className="card p-5">
-          <h2 className="font-semibold mb-3">이상 지출 감지</h2>
+          <SectionHeader icon={Icon.alert} tone="rose" title="이상 지출 감지" />
           <p className="text-xs text-slate-500 mb-3">최근 3개월 평균 대비 30% 이상 차이 나는 카테고리</p>
           <div className="space-y-2">
             {anomaliesView.slice(0, 6).map(a => (
@@ -306,7 +312,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
         const fixedView = view === 'all' ? fixedBreakdown : fixedBreakdown.filter(x => x.ledger === view);
         return (
       <section className="card p-5">
-        <h2 className="font-semibold mb-3">{month} 고정지출 분해</h2>
+        <SectionHeader icon={Icon.repeat} tone="violet" title={`${month} 고정지출 분해`} />
         {fixedView.length === 0 ? (
           <p className="text-sm text-slate-500 py-6 text-center">고정지출이 없습니다.</p>
         ) : (() => {
@@ -377,7 +383,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
 
       {/* 4지표 */}
       <section>
-        <h2 className="font-semibold mb-3">{month} 판단 지표</h2>
+        <SectionHeader icon={Icon.chart} tone="blue" title={`${month} 판단 지표`} />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard
             label="저축률"
@@ -408,13 +414,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
 
       {/* 저축률 추세 */}
       <section className="card p-5">
-        <h2 className="font-semibold mb-3">저축률 추세 (최근 6개월)</h2>
+        <SectionHeader icon={Icon.trending} tone="emerald" title="저축률 추세 (최근 6개월)" />
         <SavingsRateChart data={series} />
       </section>
 
       {/* 장부 요약 */}
       <section>
-        <h2 className="font-semibold mb-3">장부별 요약</h2>
+        <SectionHeader icon={Icon.book} tone="indigo" title="장부별 요약" />
         <div className="grid md:grid-cols-2 gap-3">
           {viewMode !== 'business' && (
           <div className="card p-4">
@@ -441,10 +447,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
 
       {/* 예산 */}
       <section className="card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">이번 달 예산</h2>
-          <Link href="/budgets" className="text-xs text-slate-500 hover:text-slate-900">관리 →</Link>
-        </div>
+        <SectionHeader
+          icon={Icon.target}
+          tone="emerald"
+          title="이번 달 예산"
+          right={<Link href="/budgets" className="text-xs text-slate-500 hover:text-slate-900">관리 →</Link>}
+        />
         {(() => {
           const budgetsView = view === 'all' ? budgets : budgets.filter(b => b.ledger === view);
           return budgetsView.length === 0 ? (
@@ -480,10 +488,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
 
       {/* 최근 거래 */}
       <section className="card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">최근 거래</h2>
-          <Link href="/transactions" className="text-xs text-slate-500 hover:text-slate-900">전체보기 →</Link>
-        </div>
+        <SectionHeader
+          icon={Icon.list}
+          tone="slate"
+          title="최근 거래"
+          right={<Link href="/transactions" className="text-xs text-slate-500 hover:text-slate-900">전체보기 →</Link>}
+        />
         {(() => {
           const recentView = view === 'all'
             ? recent

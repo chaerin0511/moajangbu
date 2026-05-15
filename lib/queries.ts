@@ -52,11 +52,15 @@ export async function listTransactions(userId: number, filters: { ledger?: strin
   return plain<any>(r.rows as any[]);
 }
 
-export async function recentTransactions(userId: number, limit = 10) {
+export async function recentTransactions(userId: number, limit = 10, ledger?: Ledger) {
   const db = await ensureDb();
+  const where = ledger
+    ? 't.user_id=? AND (t.ledger=? OR t.from_ledger=? OR t.to_ledger=?)'
+    : 't.user_id=?';
+  const args: any[] = ledger ? [userId, ledger, ledger, ledger, limit] : [userId, limit];
   const r = await db.execute({
-    sql: `SELECT t.*, c.name as category_name, p.name as person_name FROM transactions t LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN people p ON p.id = t.person_id WHERE t.user_id=? ORDER BY t.date DESC, t.id DESC LIMIT ?`,
-    args: [userId, limit],
+    sql: `SELECT t.*, c.name as category_name, p.name as person_name FROM transactions t LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN people p ON p.id = t.person_id WHERE ${where} ORDER BY t.date DESC, t.id DESC LIMIT ?`,
+    args,
   });
   return plain<any>(r.rows as any[]);
 }

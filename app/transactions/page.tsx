@@ -13,16 +13,12 @@ export const dynamic = 'force-dynamic';
 export default async function Page() {
   const userId = await currentUserId();
   const view = getViewMode();
-  const categories = await listCategories(userId, view !== 'all' ? view : undefined);
-  const people = await listPeople(userId);
-  const recentAll = await recentTransactions(userId, 40);
-  const recent = view === 'all'
-    ? recentAll.slice(0, 20)
-    : recentAll.filter((r: any) =>
-        r.type === 'transfer'
-          ? (r.from_ledger === view || r.to_ledger === view)
-          : r.ledger === view
-      ).slice(0, 20);
+  const ledger = view !== 'all' ? view : undefined;
+  const [categories, people, recent] = await Promise.all([
+    listCategories(userId, ledger),
+    listPeople(userId),
+    recentTransactions(userId, 20, ledger),
+  ]);
 
   return (
     <div className="space-y-6">
