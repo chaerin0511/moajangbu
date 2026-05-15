@@ -6,8 +6,8 @@ import Link from 'next/link';
 export const dynamic = 'force-dynamic';
 
 export default async function Page({ searchParams }: { searchParams: Record<string, string | undefined> }) {
-  const categories = listCategories();
-  const txs = listTransactions(searchParams as any);
+  const categories = await listCategories();
+  const txs = await listTransactions(searchParams as any);
   const filterLedger = searchParams.ledger || '';
   const filterType = searchParams.type || '';
   const filterMonth = searchParams.month || '';

@@ -5,10 +5,10 @@ import { formatWon } from '@/lib/utils';
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  const ob = getOpeningBalances();
+  const ob = await getOpeningBalances();
   const cur = {
-    personal: balanceAt('personal'),
-    business: balanceAt('business'),
+    personal: await balanceAt('personal'),
+    business: await balanceAt('business'),
   };
   const ledgers: Array<{ key: 'personal' | 'business'; label: string; tone: string }> = [
     { key: 'personal', label: '개인', tone: 'bg-indigo-100 text-indigo-700' },

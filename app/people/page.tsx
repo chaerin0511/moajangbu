@@ -6,8 +6,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function Page({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const month = searchParams.month || currentMonth();
-  const people = listPeople();
-  const stats = personStats(month);
+  const people = await listPeople();
+  const stats = await personStats(month);
 
   return (
     <div className="space-y-6">

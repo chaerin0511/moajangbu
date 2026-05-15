@@ -1,13 +1,15 @@
-import { listDebts, debtSummary } from '@/lib/queries';
-import { createDebt, deleteDebt, toggleDebt, recordDebtPayment } from '@/lib/actions';
+import { listDebts, debtSummary, accrueDebtInterest } from '@/lib/queries';
+import { createDebt, deleteDebt, toggleDebt, recordDebtPayment, addDebtRate } from '@/lib/actions';
 import { DEBT_KINDS } from '@/lib/db';
 import { currentMonth, formatWon, todayISO } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  const debts = listDebts();
-  const summary = debtSummary(currentMonth());
+  await accrueDebtInterest();
+  const debts = await listDebts();
+  const summary = await debtSummary(currentMonth());
+  const totalAccrued = debts.reduce((s, d) => s + (d.accrued_interest || 0), 0);
 
   // group by kind
   const grouped: Record<string, typeof debts> = {};
@@ -39,8 +41,9 @@ export default async function Page() {
           <div className="text-xs text-slate-500 mt-1">진짜 비용</div>
         </div>
         <div className="card p-4">
-          <div className="label">올해 누적 이자</div>
+          <div className="label">올해 누적 이자 (납부)</div>
           <div className="text-xl font-semibold mt-1 tabular-nums">{formatWon(summary.ytdInterest)}</div>
+          <div className="text-xs text-rose-600 mt-1">미납 이자 잔액 {formatWon(totalAccrued)}</div>
         </div>
       </section>
 
@@ -62,7 +65,13 @@ export default async function Page() {
         <label className="md:col-span-2 flex flex-col gap-1"><span className="label">시작일</span>
           <input type="date" name="start_date" defaultValue={todayISO()} required className="input" />
         </label>
-        <button className="btn-primary md:col-span-12">대출 등록</button>
+        <label className="md:col-span-3 flex flex-col gap-1"><span className="label">거치기간 (개월)</span>
+          <input type="number" name="grace_period_months" min="0" step="1" defaultValue="0" className="input text-right tabular-nums" placeholder="거치 중엔 원금 안 줄고 이자만 누적" />
+        </label>
+        <label className="md:col-span-3 flex flex-col gap-1"><span className="label">의무상환 시작 소득 (원/년)</span>
+          <input type="number" name="mandatory_repay_income" min="0" step="100000" defaultValue="0" className="input text-right tabular-nums" placeholder="취업후상환 학자금만 입력" />
+        </label>
+        <button className="btn-primary md:col-span-6">대출 등록</button>
       </form>
 
       {debts.length === 0 ? (
@@ -106,8 +115,24 @@ export default async function Page() {
                             </form>
                           </td>
                           <td>
-                            <div className="font-medium">{d.name}</div>
-                            <div className="text-xs text-slate-500">시작 {d.start_date} · 연 {(d.interest_rate * 100).toFixed(2)}%</div>
+                            <div className="font-medium">
+                              {d.name}
+                              {d.in_grace && <span className="ml-2 chip bg-amber-100 text-amber-700">거치중</span>}
+                              {d.mandatory_repay_income > 0 && <span className="ml-2 chip bg-indigo-100 text-indigo-700">취업후상환</span>}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              시작 {d.start_date} · 현재 연 {(d.current_rate * 100).toFixed(2)}%
+                              {d.grace_ends && <> · 거치 종료 {d.grace_ends}</>}
+                            </div>
+                            {d.mandatory_repay_eta && (
+                              <div className="text-xs text-indigo-600 mt-0.5">
+                                기준 소득 {formatWon(d.mandatory_repay_income)} · {d.mandatory_repay_eta}
+                                {d.annualized_income > 0 && <> · 현재 연환산 {formatWon(d.annualized_income)}</>}
+                              </div>
+                            )}
+                            {d.accrued_interest > 0 && (
+                              <div className="text-xs text-rose-600 mt-0.5">미납 이자 잔액 {formatWon(d.accrued_interest)}</div>
+                            )}
                           </td>
                           <td className="text-right tabular-nums">{formatWon(d.initial_principal)}</td>
                           <td className="text-right tabular-nums">
@@ -176,9 +201,32 @@ export default async function Page() {
         </section>
       )}
 
+      {debts.filter(d => d.active).length > 0 && (
+        <section className="card p-5">
+          <h2 className="mb-3">금리 변경 기록</h2>
+          <p className="text-xs text-slate-500 mb-3">변동금리 대출의 금리가 바뀌었을 때 입력하세요. 이후 월별 이자 누적에 자동 반영됩니다.</p>
+          <form action={addDebtRate} className="grid md:grid-cols-6 gap-3 items-end">
+            <label className="md:col-span-2 flex flex-col gap-1"><span className="label">대출</span>
+              <select name="debt_id" required className="select">
+                {debts.filter(d => d.active).map(d => (
+                  <option key={d.id} value={d.id}>{d.name} (현재 {(d.current_rate * 100).toFixed(2)}%)</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1"><span className="label">적용일</span>
+              <input type="date" name="effective_date" defaultValue={todayISO()} required className="input" />
+            </label>
+            <label className="flex flex-col gap-1"><span className="label">새 연이자율</span>
+              <input type="number" name="rate" step="0.001" min="0" required className="input text-right tabular-nums" placeholder="0.045 = 4.5%" />
+            </label>
+            <button className="btn-primary">금리 변경 추가</button>
+          </form>
+        </section>
+      )}
+
       <p className="text-xs text-slate-500">
-        원금 상환은 자산이 늘어나는 것과 같아서 저축률 계산 시 "지출"에서 제외됩니다. 이자만 진짜 비용으로 잡혀요.
-        취업후상환 학자금은 의무 상환 전까진 이자만 발생하니, 이자 칸만 입력하면 됩니다.
+        매월 1일 기준으로 남은 원금 × 연이자율 / 12가 자동 누적됩니다 (거치 중엔 원금이 줄지 않아 이자만 쌓여요).
+        상환 시 입력한 이자 금액은 미납 이자 잔액에서 먼저 차감됩니다. 원금 상환은 자산 증가로 보아 저축률 계산 시 지출에서 제외됩니다.
       </p>
     </div>
   );

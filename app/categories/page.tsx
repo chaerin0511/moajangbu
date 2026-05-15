@@ -4,7 +4,7 @@ import { createCategory, deleteCategory } from '@/lib/actions';
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  const cats = listCategories();
+  const cats = await listCategories();
   const personal = cats.filter(c => c.ledger === 'personal');
   const business = cats.filter(c => c.ledger === 'business');
   return (

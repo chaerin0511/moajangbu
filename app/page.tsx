@@ -89,26 +89,26 @@ function SavingsRateChart({ data }: { data: { month: string; rate: number }[] })
 }
 
 export default async function Dashboard({ searchParams }: { searchParams: Record<string, string | undefined> }) {
-  generateRecurring();
+  await generateRecurring();
   const month = searchParams.month || currentMonth();
-  const t = monthlyTotals(month);
-  const h = financialHealth(month);
-  const series = savingsRateSeries();
-  const budgets = listBudgets(month);
-  const recent = recentTransactions(8);
+  const t = await monthlyTotals(month);
+  const h = await financialHealth(month);
+  const series = await savingsRateSeries();
+  const budgets = await listBudgets(month);
+  const recent = await recentTransactions(8);
 
-  const balPersonal = balanceAt('personal');
-  const balBusiness = balanceAt('business');
-  const projPersonal = projectedMonthEndBalance('personal');
-  const projBusiness = projectedMonthEndBalance('business');
+  const balPersonal = await balanceAt('personal');
+  const balBusiness = await balanceAt('business');
+  const projPersonal = await projectedMonthEndBalance('personal');
+  const projBusiness = await projectedMonthEndBalance('business');
 
-  const fixedBreakdown = fixedExpenseBreakdown(month);
-  const ef = emergencyFund();
-  const ytd = ytdSavings();
-  const anomalies = spendingAnomalies(month);
-  const tax = taxReserve();
-  const dbt = debtSummary(month);
-  const adj = adjustedSavingsRate(month);
+  const fixedBreakdown = await fixedExpenseBreakdown(month);
+  const ef = await emergencyFund();
+  const ytd = await ytdSavings();
+  const anomalies = await spendingAnomalies(month);
+  const tax = await taxReserve();
+  const dbt = await debtSummary(month);
+  const adj = await adjustedSavingsRate(month);
 
   return (
     <div className="space-y-8">

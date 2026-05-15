@@ -9,9 +9,9 @@ import Link from 'next/link';
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  const categories = listCategories();
-  const people = listPeople();
-  const recent = recentTransactions(20);
+  const categories = await listCategories();
+  const people = await listPeople();
+  const recent = await recentTransactions(20);
 
   return (
     <div className="space-y-6">

@@ -9,14 +9,14 @@ export const dynamic = 'force-dynamic';
 
 async function runGenerate() {
   'use server';
-  generateRecurring();
+  await generateRecurring();
   revalidatePath('/recurring');
   revalidatePath('/');
 }
 
 export default async function Page() {
-  const rules = listRecurring();
-  const categories = listCategories();
+  const rules = await listRecurring();
+  const categories = await listCategories();
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">

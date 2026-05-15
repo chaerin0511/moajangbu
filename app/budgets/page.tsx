@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function Page({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const month = searchParams.month || currentMonth();
-  const categories = listCategories();
-  const budgets = listBudgets(month);
+  const categories = await listCategories();
+  const budgets = await listBudgets(month);
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">예산</h1>
