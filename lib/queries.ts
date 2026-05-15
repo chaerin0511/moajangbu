@@ -1050,6 +1050,132 @@ export async function recentSales(userId: number, limit = 10) {
   }));
 }
 
+/* ─────────── Business dashboard ─────────── */
+
+export interface BusinessExpenseRow { category_id: number | null; category_name: string | null; amount: number; share: number }
+
+export async function businessExpenseBreakdown(userId: number, month: string): Promise<BusinessExpenseRow[]> {
+  const db = await ensureDb();
+  const r = await db.execute({
+    sql: `SELECT t.category_id, c.name AS category_name, COALESCE(SUM(t.amount),0) AS amount
+          FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+          WHERE t.user_id=? AND t.ledger='business' AND t.type='expense' AND substr(t.date,1,7)=?
+          GROUP BY t.category_id, c.name
+          ORDER BY amount DESC`,
+    args: [userId, month],
+  });
+  const rows = (r.rows as any[]).map(row => ({
+    category_id: row.category_id === null ? null : N(row.category_id),
+    category_name: row.category_name,
+    amount: N(row.amount),
+  }));
+  const total = rows.reduce((s, x) => s + x.amount, 0);
+  return rows.map(x => ({ ...x, share: total > 0 ? x.amount / total : 0 }));
+}
+
+export interface BusinessOperatingProfit { revenue: number; totalExpense: number; profit: number; profitMargin: number }
+
+export async function businessOperatingProfit(userId: number, month: string): Promise<BusinessOperatingProfit> {
+  const db = await ensureDb();
+  const r = await db.execute({
+    sql: `SELECT
+      COALESCE(SUM(CASE WHEN type='income'  THEN COALESCE(supply_amount, amount) ELSE 0 END),0) AS revenue,
+      COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense
+     FROM transactions WHERE user_id=? AND ledger='business' AND substr(date,1,7)=?`,
+    args: [userId, month],
+  });
+  const row = r.rows[0] as any;
+  const revenue = N(row.revenue);
+  const totalExpense = N(row.expense);
+  const profit = revenue - totalExpense;
+  return { revenue, totalExpense, profit, profitMargin: revenue > 0 ? profit / revenue : 0 };
+}
+
+export interface BusinessCashFlowPoint { month: string; income: number; expense: number; net: number }
+
+export async function businessCashFlow(userId: number, year: string): Promise<BusinessCashFlowPoint[]> {
+  const db = await ensureDb();
+  const r = await db.execute({
+    sql: `SELECT substr(date,1,7) AS m,
+      COALESCE(SUM(CASE WHEN type='income'  THEN COALESCE(supply_amount, amount) ELSE 0 END),0) AS income,
+      COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense
+     FROM transactions WHERE user_id=? AND ledger='business' AND substr(date,1,4)=?
+     GROUP BY m`,
+    args: [userId, year],
+  });
+  const byM = new Map<string, { income: number; expense: number }>();
+  for (const row of r.rows as any[]) byM.set(row.m, { income: N(row.income), expense: N(row.expense) });
+  const out: BusinessCashFlowPoint[] = [];
+  for (let i = 1; i <= 12; i++) {
+    const key = `${year}-${String(i).padStart(2, '0')}`;
+    const v = byM.get(key) || { income: 0, expense: 0 };
+    out.push({ month: key, income: v.income, expense: v.expense, net: v.income - v.expense });
+  }
+  return out;
+}
+
+export interface BusinessYtd { revenue: number; totalExpense: number; profit: number; vatTotal: number }
+
+export async function businessYtd(userId: number, year: string): Promise<BusinessYtd> {
+  const db = await ensureDb();
+  const r = await db.execute({
+    sql: `SELECT
+      COALESCE(SUM(CASE WHEN type='income'  THEN COALESCE(supply_amount, amount) ELSE 0 END),0) AS revenue,
+      COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense,
+      COALESCE(SUM(CASE WHEN type='income'  THEN COALESCE(vat_amount, 0)        ELSE 0 END),0) AS vat
+     FROM transactions WHERE user_id=? AND ledger='business' AND substr(date,1,4)=?`,
+    args: [userId, year],
+  });
+  const row = r.rows[0] as any;
+  const revenue = N(row.revenue);
+  const totalExpense = N(row.expense);
+  return { revenue, totalExpense, profit: revenue - totalExpense, vatTotal: N(row.vat) };
+}
+
+export interface BusinessVatNext { period: string; deadline: string; supply: number; vat: number; due: number }
+
+export async function businessVatNext(userId: number): Promise<BusinessVatNext> {
+  const db = await ensureDb();
+  const today = new Date();
+  const todayISO = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  // Each quarter has months range and deadline (YYYY-MM-DD relative to year y or y+1)
+  const quarters = (y: number) => ([
+    { period: `${y} 1기 예정`,  months: [`${y}-01`, `${y}-02`, `${y}-03`], deadline: `${y}-04-25` },
+    { period: `${y} 1기 확정`,  months: [`${y}-04`, `${y}-05`, `${y}-06`], deadline: `${y}-07-25` },
+    { period: `${y} 2기 예정`,  months: [`${y}-07`, `${y}-08`, `${y}-09`], deadline: `${y}-10-25` },
+    { period: `${y} 2기 확정`,  months: [`${y}-10`, `${y}-11`, `${y}-12`], deadline: `${y+1}-01-25` },
+  ]);
+  const year = today.getFullYear();
+  const all = [...quarters(year), ...quarters(year + 1)];
+  const next = all.find(q => q.deadline >= todayISO) || all[all.length - 1];
+  const placeholders = next.months.map(() => '?').join(',');
+  const r = await db.execute({
+    sql: `SELECT
+      COALESCE(SUM(COALESCE(supply_amount, amount)),0) AS supply,
+      COALESCE(SUM(COALESCE(vat_amount, 0)),0) AS vat
+     FROM transactions
+     WHERE user_id=? AND ledger='business' AND type='income' AND substr(date,1,7) IN (${placeholders})`,
+    args: [userId, ...next.months],
+  });
+  const row = r.rows[0] as any;
+  const supply = N(row.supply);
+  const vat = N(row.vat);
+  return { period: next.period, deadline: next.deadline, supply, vat, due: vat };
+}
+
+export interface BusinessTarget { target_revenue: number; target_profit: number }
+
+export async function getBusinessTarget(userId: number, month: string): Promise<BusinessTarget | null> {
+  const db = await ensureDb();
+  const r = await db.execute({
+    sql: `SELECT target_revenue, target_profit FROM business_targets WHERE user_id=? AND month=?`,
+    args: [userId, month],
+  });
+  if (r.rows.length === 0) return null;
+  const row = r.rows[0] as any;
+  return { target_revenue: N(row.target_revenue), target_profit: N(row.target_profit) };
+}
+
 export async function listInvestments(userId: number): Promise<InvestmentRow[]> {
   const db = await ensureDb();
   const r = await db.execute({ sql: 'SELECT * FROM investments WHERE user_id=? ORDER BY active DESC, name', args: [userId] });

@@ -6,8 +6,9 @@ import {
 } from '@/lib/queries';
 import { currentMonth, formatWon } from '@/lib/utils';
 import { currentUserId } from '@/lib/auth-helper';
-import { getViewMode } from '@/lib/view-mode';
+import { getViewMode, type ViewMode } from '@/lib/view-mode';
 import Link from 'next/link';
+import BusinessDashboard from './_business-dashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,8 +93,23 @@ function SavingsRateChart({ data }: { data: { month: string; rate: number }[] })
 
 export default async function Dashboard({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const userId = await currentUserId();
-  const view = getViewMode();
+  const view: ViewMode = getViewMode();
   const month = searchParams.month || currentMonth();
+
+  if (view === 'business') {
+    return (
+      <div className="space-y-8">
+        <form className="flex items-center justify-end gap-2">
+          <span className="label">조회 월</span>
+          <input type="month" name="month" defaultValue={month} className="input" />
+          <button className="btn-primary">보기</button>
+        </form>
+        <BusinessDashboard userId={userId} month={month} />
+      </div>
+    );
+  }
+  const viewMode = view as ViewMode;
+
   // 모든 집계 쿼리를 병렬 실행 (이전 17번 순차 → 1라운드 병렬)
   const [
     _genResult,
@@ -129,7 +145,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
         <button className="btn-primary">보기</button>
       </form>
 
-      {view !== 'business' && (
+      {viewMode !== 'business' && (
         <HealthHero month={month} rate={h.savingsRate} net={h.net} vsLastMonth={h.vsLastMonth.net} />
       )}
 
@@ -226,7 +242,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
       {/* 비상금 & 연간 누적 */}
       <section>
         <div className="grid md:grid-cols-2 gap-3">
-          {view !== 'business' && (
+          {viewMode !== 'business' && (
           <div className="card p-5">
             <div className="flex items-center justify-between">
               <h3>비상금</h3>
@@ -375,7 +391,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
       <section>
         <h2 className="font-semibold mb-3">장부별 요약</h2>
         <div className="grid md:grid-cols-2 gap-3">
-          {view !== 'business' && (
+          {viewMode !== 'business' && (
           <div className="card p-4">
             <div className="flex items-center gap-2 mb-2"><span className="chip bg-indigo-100 text-indigo-700">개인</span></div>
             <div className="grid grid-cols-3 gap-2 text-sm">

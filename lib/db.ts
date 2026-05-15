@@ -175,6 +175,14 @@ async function init(db: Client) {
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_inv_trades_user ON investment_trades(user_id, date)`).catch(()=>{});
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_inv_trades_inv ON investment_trades(investment_id)`).catch(()=>{});
 
+  await db.execute(`CREATE TABLE IF NOT EXISTS business_targets (
+    user_id INTEGER NOT NULL,
+    month TEXT NOT NULL,
+    target_revenue INTEGER NOT NULL DEFAULT 0,
+    target_profit INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, month)
+  )`);
+
   const countR = await db.execute('SELECT COUNT(*) as c FROM categories');
   const count = Number((countR.rows[0] as any).c);
   if (count === 0) {

@@ -13,6 +13,22 @@ export async function setViewMode(fd: FormData) {
   revalidatePath('/', 'layout');
 }
 
+export async function setBusinessTarget(fd: FormData) {
+  const userId = await currentUserId();
+  const month = String(fd.get('month') || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(month)) return;
+  const target_revenue = Math.max(0, Math.round(Number(fd.get('target_revenue')) || 0));
+  const target_profit = Math.max(0, Math.round(Number(fd.get('target_profit')) || 0));
+  const db = await ensureDb();
+  await db.execute({
+    sql: `INSERT INTO business_targets (user_id, month, target_revenue, target_profit)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(user_id, month) DO UPDATE SET target_revenue=excluded.target_revenue, target_profit=excluded.target_profit`,
+    args: [userId, month, target_revenue, target_profit],
+  });
+  revalidatePath('/');
+}
+
 export async function updateProfileName(fd: FormData) {
   const userId = await currentUserId();
   const name = String(fd.get('name') || '').trim();
