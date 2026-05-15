@@ -9,6 +9,7 @@ export const ALL_NAV_ITEMS: NavItem[] = [
   { href: '/statistics',   label: '통계' },
   { href: '/investments',  label: '투자' },
   { href: '/debts',        label: '대출' },
+  { href: '/sales',        label: '매출' },
   { href: '/budgets',      label: '예산' },
   { href: '/recurring',    label: '고정거래' },
   { href: '/categories',   label: '카테고리' },
@@ -56,6 +57,14 @@ export function navIcon(href: string): ReactElement {
         createElement('rect', { key: 'a', x: 2, y: 6, width: 20, height: 12, rx: 2 }),
         createElement('circle', { key: 'b', cx: 12, cy: 12, r: 2 }),
         createElement('path', { key: 'c', d: 'M6 12h.01M18 12h.01' }),
+      ]);
+    case '/sales':
+      return svg([
+        createElement('path', { key: 'a', d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }),
+        createElement('path', { key: 'b', d: 'M14 2v6h6' }),
+        createElement('path', { key: 'c', d: 'M16 13H8' }),
+        createElement('path', { key: 'd', d: 'M16 17H8' }),
+        createElement('path', { key: 'e', d: 'M10 9H8' }),
       ]);
     case '/budgets':
       return svg([

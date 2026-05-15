@@ -141,6 +141,9 @@ async function init(db: Client) {
   await tryAlter("ALTER TABLE transactions ADD COLUMN interest_amount INTEGER");
   await tryAlter("ALTER TABLE users ADD COLUMN image TEXT");
   await tryAlter("ALTER TABLE users ADD COLUMN nav_order TEXT");
+  // 사업자 매출 — 부가세 분리
+  await tryAlter("ALTER TABLE transactions ADD COLUMN supply_amount INTEGER");
+  await tryAlter("ALTER TABLE transactions ADD COLUMN vat_amount INTEGER");
 
   // Investments
   await db.execute(`CREATE TABLE IF NOT EXISTS investments (

@@ -17,7 +17,9 @@ export default function TransactionForm({ categories, people = [], action, initi
 }) {
   const [type, setType] = useState<string>(initial?.type || 'expense');
   const [ledger, setLedger] = useState<string>(initial?.ledger || 'personal');
+  const [vatIncluded, setVatIncluded] = useState<boolean>(!!(initial?.vat_amount && initial?.supply_amount));
   const cats = categories.filter(c => c.ledger === ledger);
+  const showVat = ledger === 'business' && type === 'income';
 
   return (
     <form action={action} className="card p-5 space-y-4">
@@ -122,6 +124,14 @@ export default function TransactionForm({ categories, people = [], action, initi
           <span className="label">메모</span>
           <input type="text" name="memo" defaultValue={initial?.memo || ''} className="input" placeholder="간단한 메모" />
         </label>
+
+        {showVat && (
+          <label className="md:col-span-9 flex items-center gap-2 text-sm text-slate-600">
+            <input type="checkbox" checked={vatIncluded} onChange={e => setVatIncluded(e.target.checked)} />
+            부가세 포함 (총액을 1.1로 나눠 자동분리)
+          </label>
+        )}
+        <input type="hidden" name="vat_mode" value={showVat ? (vatIncluded ? 'included' : 'none') : 'none'} />
 
         <div className="md:col-span-3 flex items-end">
           <button type="submit" className="btn-primary w-full py-2.5">{submitLabel}</button>

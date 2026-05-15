@@ -12,6 +12,7 @@ const DESCRIPTIONS: Record<string, string> = {
   '/statistics': '저축률·수입·지출 통계',
   '/investments': '주식·ETF·암호화폐',
   '/debts': '대출·부채 현황',
+  '/sales': '사업자 매출·부가세',
   '/recurring': '매월 자동 반복',
   '/budgets': '카테고리별 한도',
   '/categories': '수입·지출 분류',

@@ -923,6 +923,133 @@ function computeMetrics(inv: Investment, agg: TradeAgg | undefined): InvestmentR
   };
 }
 
+/* ─────────── Business sales (매출) ─────────── */
+
+export interface SalesSummary { supply: number; vat: number; total: number; count: number; cashCollected: number }
+
+export async function salesSummary(userId: number, month: string): Promise<SalesSummary> {
+  const db = await ensureDb();
+  const r = await db.execute({
+    sql: `SELECT
+      COALESCE(SUM(COALESCE(supply_amount, amount)),0) AS supply,
+      COALESCE(SUM(COALESCE(vat_amount, 0)),0) AS vat,
+      COALESCE(SUM(amount),0) AS total,
+      COUNT(*) AS cnt
+      FROM transactions
+      WHERE user_id=? AND ledger='business' AND type='income' AND substr(date,1,7)=?`,
+    args: [userId, month],
+  });
+  const row = r.rows[0] as any;
+  const supply = N(row.supply);
+  const vat = N(row.vat);
+  const total = supply + vat;
+  return { supply, vat, total, count: N(row.cnt), cashCollected: N(row.total) };
+}
+
+export interface SalesQuarter { quarter: 1 | 2 | 3 | 4; months: string; supply: number; vat: number; total: number; vatDue: number }
+
+export async function salesByQuarter(userId: number, year: string): Promise<SalesQuarter[]> {
+  const db = await ensureDb();
+  const r = await db.execute({
+    sql: `SELECT
+      CASE
+        WHEN substr(date,6,2) IN ('01','02','03') THEN 1
+        WHEN substr(date,6,2) IN ('04','05','06') THEN 2
+        WHEN substr(date,6,2) IN ('07','08','09') THEN 3
+        ELSE 4
+      END AS q,
+      COALESCE(SUM(COALESCE(supply_amount, amount)),0) AS supply,
+      COALESCE(SUM(COALESCE(vat_amount, 0)),0) AS vat
+      FROM transactions
+      WHERE user_id=? AND ledger='business' AND type='income' AND substr(date,1,4)=?
+      GROUP BY q`,
+    args: [userId, year],
+  });
+  const byQ = new Map<number, { supply: number; vat: number }>();
+  for (const row of r.rows as any[]) byQ.set(N(row.q), { supply: N(row.supply), vat: N(row.vat) });
+  const labels: Record<number, string> = { 1: '1~3월', 2: '4~6월', 3: '7~9월', 4: '10~12월' };
+  const out: SalesQuarter[] = [];
+  for (const q of [1, 2, 3, 4] as const) {
+    const v = byQ.get(q) || { supply: 0, vat: 0 };
+    out.push({ quarter: q, months: labels[q], supply: v.supply, vat: v.vat, total: v.supply + v.vat, vatDue: v.vat });
+  }
+  return out;
+}
+
+export interface SalesCategoryRow { category_id: number | null; category_name: string | null; supply: number; vat: number; total: number; count: number }
+
+export async function salesByCategory(userId: number, month: string): Promise<SalesCategoryRow[]> {
+  const db = await ensureDb();
+  const r = await db.execute({
+    sql: `SELECT t.category_id, c.name AS category_name,
+      COALESCE(SUM(COALESCE(t.supply_amount, t.amount)),0) AS supply,
+      COALESCE(SUM(COALESCE(t.vat_amount, 0)),0) AS vat,
+      COUNT(*) AS cnt
+      FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+      WHERE t.user_id=? AND t.ledger='business' AND t.type='income' AND substr(t.date,1,7)=?
+      GROUP BY t.category_id, c.name
+      ORDER BY supply + vat DESC`,
+    args: [userId, month],
+  });
+  return (r.rows as any[]).map(row => {
+    const supply = N(row.supply);
+    const vat = N(row.vat);
+    return {
+      category_id: row.category_id === null ? null : N(row.category_id),
+      category_name: row.category_name,
+      supply, vat, total: supply + vat, count: N(row.cnt),
+    };
+  });
+}
+
+export interface SalesMonthPoint { month: string; supply: number; vat: number; total: number }
+
+export async function salesByMonthSeries(userId: number, year: string): Promise<SalesMonthPoint[]> {
+  const db = await ensureDb();
+  const r = await db.execute({
+    sql: `SELECT substr(date,1,7) AS m,
+      COALESCE(SUM(COALESCE(supply_amount, amount)),0) AS supply,
+      COALESCE(SUM(COALESCE(vat_amount, 0)),0) AS vat
+      FROM transactions
+      WHERE user_id=? AND ledger='business' AND type='income' AND substr(date,1,4)=?
+      GROUP BY m`,
+    args: [userId, year],
+  });
+  const byM = new Map<string, { supply: number; vat: number }>();
+  for (const row of r.rows as any[]) byM.set(row.m, { supply: N(row.supply), vat: N(row.vat) });
+  const out: SalesMonthPoint[] = [];
+  for (let i = 1; i <= 12; i++) {
+    const key = `${year}-${String(i).padStart(2, '0')}`;
+    const v = byM.get(key) || { supply: 0, vat: 0 };
+    out.push({ month: key, supply: v.supply, vat: v.vat, total: v.supply + v.vat });
+  }
+  return out;
+}
+
+export async function recentSales(userId: number, limit = 10) {
+  const db = await ensureDb();
+  const r = await db.execute({
+    sql: `SELECT t.id, t.date, t.amount, t.supply_amount, t.vat_amount, t.memo,
+                 c.name AS category_name, p.name AS person_name
+          FROM transactions t
+          LEFT JOIN categories c ON c.id = t.category_id
+          LEFT JOIN people p ON p.id = t.person_id
+          WHERE t.user_id=? AND t.ledger='business' AND t.type='income'
+          ORDER BY t.date DESC, t.id DESC LIMIT ?`,
+    args: [userId, limit],
+  });
+  return (r.rows as any[]).map(row => ({
+    id: N(row.id),
+    date: row.date,
+    amount: N(row.amount),
+    supply_amount: row.supply_amount === null ? null : N(row.supply_amount),
+    vat_amount: row.vat_amount === null ? null : N(row.vat_amount),
+    category_name: row.category_name,
+    memo: row.memo,
+    person_name: row.person_name,
+  }));
+}
+
 export async function listInvestments(userId: number): Promise<InvestmentRow[]> {
   const db = await ensureDb();
   const r = await db.execute({ sql: 'SELECT * FROM investments WHERE user_id=? ORDER BY active DESC, name', args: [userId] });

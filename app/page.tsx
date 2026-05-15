@@ -224,7 +224,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
         <div className="grid md:grid-cols-2 gap-3">
           <div className="card p-5">
             <div className="flex items-center justify-between">
-              <h3>비상금 게이지</h3>
+              <h3>비상금</h3>
               <span className="text-xs text-slate-500">개인 고정지출 기준</span>
             </div>
             <div className="text-2xl font-bold tabular-nums mt-2">

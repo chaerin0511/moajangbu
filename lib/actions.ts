@@ -88,26 +88,80 @@ export async function createTransactionsBulk(fd: FormData) {
   revalidatePath('/transactions'); revalidatePath('/'); revalidatePath('/people'); revalidatePath('/categories');
 }
 
+/**
+ * Compute supply_amount/vat_amount/amount based on vat_mode.
+ * Returns null/null for non business-income (we don't persist VAT for those).
+ */
+function computeVatSplit(
+  ledger: string,
+  type: string,
+  rawAmount: number,
+  vat_mode: string | null,
+  rawSupply: number | null,
+  rawVat: number | null,
+): { amount: number; supply: number | null; vat: number | null } {
+  const isBizIncome = ledger === 'business' && type === 'income';
+  if (!isBizIncome) return { amount: rawAmount, supply: null, vat: null };
+  const mode = vat_mode || 'none';
+  if (mode === 'included') {
+    const supply = Math.round(rawAmount / 1.1);
+    const vat = rawAmount - supply;
+    return { amount: rawAmount, supply, vat };
+  }
+  if (mode === 'separate') {
+    const supply = Math.max(0, rawSupply || 0);
+    const vat = Math.max(0, rawVat || 0);
+    return { amount: supply + vat, supply, vat };
+  }
+  // none: amount is supply, vat = 0 (so reports still work)
+  return { amount: rawAmount, supply: rawAmount, vat: 0 };
+}
+
 export async function createTransaction(fd: FormData) {
   const userId = await currentUserId();
   const db = await ensureDb();
   const type = String(fd.get('type'));
   const ledger = String(fd.get('ledger'));
   const date = String(fd.get('date'));
-  const amount = num(fd.get('amount')) || 0;
+  const rawAmount = num(fd.get('amount')) || 0;
   const category_id = num(fd.get('category_id'));
   const memo = str(fd.get('memo'));
   const person_id = num(fd.get('person_id'));
+  const vat_mode = str(fd.get('vat_mode'));
+  const rawSupply = num(fd.get('supply_amount'));
+  const rawVat = num(fd.get('vat_amount'));
   let from_ledger: string | null = null, to_ledger: string | null = null;
   if (type === 'transfer') {
     from_ledger = String(fd.get('from_ledger'));
     to_ledger = String(fd.get('to_ledger'));
   }
+  const { amount, supply, vat } = computeVatSplit(ledger, type, rawAmount, vat_mode, rawSupply, rawVat);
   await db.execute({
-    sql: `INSERT INTO transactions (ledger, type, date, amount, category_id, from_ledger, to_ledger, memo, person_id, user_id) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    args: [ledger, type, date, amount, category_id, from_ledger, to_ledger, memo, person_id, userId],
+    sql: `INSERT INTO transactions (ledger, type, date, amount, category_id, from_ledger, to_ledger, memo, person_id, user_id, supply_amount, vat_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    args: [ledger, type, date, amount, category_id, from_ledger, to_ledger, memo, person_id, userId, supply, vat],
   });
-  revalidatePath('/transactions'); revalidatePath('/'); revalidatePath('/people');
+  revalidatePath('/transactions'); revalidatePath('/'); revalidatePath('/people'); revalidatePath('/sales');
+}
+
+export async function addSale(fd: FormData) {
+  const userId = await currentUserId();
+  const db = await ensureDb();
+  const date = String(fd.get('date'));
+  const rawAmount = num(fd.get('amount')) || 0;
+  const category_id = num(fd.get('category_id'));
+  const memo = str(fd.get('memo'));
+  const person_id = num(fd.get('person_id'));
+  const vat_mode = str(fd.get('vat_mode')) || 'included';
+  const rawSupply = num(fd.get('supply_amount'));
+  const rawVat = num(fd.get('vat_amount'));
+  if (rawAmount <= 0 && !(rawSupply && rawSupply > 0)) return;
+  const { amount, supply, vat } = computeVatSplit('business', 'income', rawAmount, vat_mode, rawSupply, rawVat);
+  if (amount <= 0) return;
+  await db.execute({
+    sql: `INSERT INTO transactions (ledger, type, date, amount, category_id, memo, person_id, user_id, supply_amount, vat_amount) VALUES ('business','income',?,?,?,?,?,?,?,?)`,
+    args: [date, amount, category_id, memo, person_id, userId, supply, vat],
+  });
+  revalidatePath('/sales'); revalidatePath('/transactions'); revalidatePath('/');
 }
 
 export async function updateTransaction(fd: FormData) {
@@ -118,19 +172,23 @@ export async function updateTransaction(fd: FormData) {
   const type = String(fd.get('type'));
   const ledger = String(fd.get('ledger'));
   const date = String(fd.get('date'));
-  const amount = num(fd.get('amount')) || 0;
+  const rawAmount = num(fd.get('amount')) || 0;
   const category_id = num(fd.get('category_id'));
   const memo = str(fd.get('memo'));
+  const vat_mode = str(fd.get('vat_mode'));
+  const rawSupply = num(fd.get('supply_amount'));
+  const rawVat = num(fd.get('vat_amount'));
   let from_ledger: string | null = null, to_ledger: string | null = null;
   if (type === 'transfer') {
     from_ledger = String(fd.get('from_ledger'));
     to_ledger = String(fd.get('to_ledger'));
   }
+  const { amount, supply, vat } = computeVatSplit(ledger, type, rawAmount, vat_mode, rawSupply, rawVat);
   await db.execute({
-    sql: `UPDATE transactions SET ledger=?, type=?, date=?, amount=?, category_id=?, from_ledger=?, to_ledger=?, memo=? WHERE id=? AND user_id=?`,
-    args: [ledger, type, date, amount, category_id, from_ledger, to_ledger, memo, id, userId],
+    sql: `UPDATE transactions SET ledger=?, type=?, date=?, amount=?, category_id=?, from_ledger=?, to_ledger=?, memo=?, supply_amount=?, vat_amount=? WHERE id=? AND user_id=?`,
+    args: [ledger, type, date, amount, category_id, from_ledger, to_ledger, memo, supply, vat, id, userId],
   });
-  revalidatePath('/transactions'); revalidatePath('/');
+  revalidatePath('/transactions'); revalidatePath('/'); revalidatePath('/sales');
 }
 
 export async function deleteTransaction(fd: FormData) {
