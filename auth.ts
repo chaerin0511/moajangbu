@@ -2,17 +2,25 @@ import NextAuth from 'next-auth';
 import { authConfig } from './auth.config';
 import { ensureDb } from './lib/db';
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const { handlers, auth, signIn, signOut, unstable_update: updateSession } = NextAuth({
   ...authConfig,
   events: {
-    async signIn(msg) { console.log('[event:signIn]', JSON.stringify(msg, null, 2)); },
-    async createUser(msg) { console.log('[event:createUser]', JSON.stringify(msg)); },
+    // 토큰(access/refresh/id_token)이 로그에 남지 않도록 최소 식별자만 기록
+    async signIn(msg) {
+      console.log('[event:signIn]', {
+        provider: msg.account?.provider,
+        providerAccountId: msg.account?.providerAccountId,
+        isNewUser: msg.isNewUser,
+      });
+    },
+    async createUser(msg) {
+      console.log('[event:createUser]', { userId: (msg.user as any)?.id });
+    },
   },
   callbacks: {
     ...authConfig.callbacks,
     async signIn({ profile, account }) {
       try {
-      console.log('[signIn] profile keys:', profile ? Object.keys(profile) : 'null', 'account.providerAccountId:', account?.providerAccountId);
       if (!profile && !account) return false;
       const db = await ensureDb();
       const kakaoId = String(account?.providerAccountId || (profile as any)?.sub || (profile as any)?.id || '');
@@ -68,23 +76,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const kakaoId = String(account?.providerAccountId || (profile as any)?.sub || (profile as any)?.id || '');
           if (kakaoId) {
             const db = await ensureDb();
-            const u = await db.execute({ sql: 'SELECT id, name, image FROM users WHERE kakao_id=?', args: [kakaoId] });
+            const u = await db.execute({ sql: 'SELECT id, name, image, nav_order FROM users WHERE kakao_id=?', args: [kakaoId] });
             const row = u.rows[0] as any;
             if (row) {
               token.userId = Number(row.id);
               token.name = row.name;
               token.picture = row.image;
+              (token as any).navOrder = row.nav_order || null;
             }
           }
         }
         // After profile update, refresh from DB
         if (trigger === 'update' && token.userId) {
           const db = await ensureDb();
-          const u = await db.execute({ sql: 'SELECT name, image FROM users WHERE id=?', args: [Number(token.userId)] });
+          const u = await db.execute({ sql: 'SELECT name, image, nav_order FROM users WHERE id=?', args: [Number(token.userId)] });
           const row = u.rows[0] as any;
           if (row) {
             token.name = row.name;
             token.picture = row.image;
+            (token as any).navOrder = row.nav_order || null;
           }
         }
       } catch (e) {
@@ -94,6 +104,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async session({ session, token }) {
       (session as any).userId = token.userId;
+      (session as any).navOrder = (token as any).navOrder ?? null;
       if (token.name) session.user!.name = token.name as string;
       if (token.picture) session.user!.image = token.picture as string;
       return session;

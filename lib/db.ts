@@ -8,15 +8,20 @@ declare global {
 }
 
 async function init(db: Client) {
-  // run each CREATE TABLE / CREATE INDEX as separate db.execute calls
+  // 콜드 스타트 최적화: 독립적인 CREATE/ALTER/INDEX를 단계별로 병렬 실행
   // (libsql doesn't accept multi-statement strings via execute)
-  await db.execute(`CREATE TABLE IF NOT EXISTS categories (
+  const exec = (sql: string) => db.execute(sql).catch(() => {});
+  const tryAlter = (sql: string) => db.execute(sql).catch(() => {});
+
+  // Phase 1: CREATE TABLE 전부 병렬
+  await Promise.all([
+    exec(`CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ledger TEXT NOT NULL CHECK(ledger IN ('personal','business')),
     name TEXT NOT NULL,
     UNIQUE(ledger, name)
-  )`);
-  await db.execute(`CREATE TABLE IF NOT EXISTS transactions (
+  )`),
+    exec(`CREATE TABLE IF NOT EXISTS transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ledger TEXT NOT NULL CHECK(ledger IN ('personal','business')),
     type TEXT NOT NULL CHECK(type IN ('income','expense','transfer')),
@@ -28,10 +33,8 @@ async function init(db: Client) {
     memo TEXT,
     recurring_id INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date)`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_ledger ON transactions(ledger)`);
-  await db.execute(`CREATE TABLE IF NOT EXISTS recurring (
+  )`),
+    exec(`CREATE TABLE IF NOT EXISTS recurring (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ledger TEXT NOT NULL,
     type TEXT NOT NULL CHECK(type IN ('income','expense','transfer')),
@@ -43,20 +46,20 @@ async function init(db: Client) {
     to_ledger TEXT,
     start_date TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1
-  )`);
-  await db.execute(`CREATE TABLE IF NOT EXISTS account_settings (
+  )`),
+    exec(`CREATE TABLE IF NOT EXISTS account_settings (
     ledger TEXT PRIMARY KEY CHECK(ledger IN ('personal','business')),
     opening_balance INTEGER NOT NULL DEFAULT 0,
     opening_date TEXT NOT NULL DEFAULT '2025-01-01',
     tax_reserve_rate REAL NOT NULL DEFAULT 0
-  )`);
-  await db.execute(`CREATE TABLE IF NOT EXISTS people (
+  )`),
+    exec(`CREATE TABLE IF NOT EXISTS people (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     relation TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`);
-  await db.execute(`CREATE TABLE IF NOT EXISTS debts (
+  )`),
+    exec(`CREATE TABLE IF NOT EXISTS debts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     kind TEXT NOT NULL DEFAULT '기타',
@@ -70,83 +73,38 @@ async function init(db: Client) {
     mandatory_repay_income INTEGER NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`);
-  await db.execute(`CREATE TABLE IF NOT EXISTS debt_rate_history (
+  )`),
+    exec(`CREATE TABLE IF NOT EXISTS debt_rate_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     debt_id INTEGER NOT NULL,
     effective_date TEXT NOT NULL,
     rate REAL NOT NULL,
     FOREIGN KEY(debt_id) REFERENCES debts(id) ON DELETE CASCADE
-  )`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_rate_history_debt ON debt_rate_history(debt_id, effective_date)`);
-  await db.execute(`CREATE TABLE IF NOT EXISTS budgets (
+  )`),
+    exec(`CREATE TABLE IF NOT EXISTS budgets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ledger TEXT NOT NULL,
     category_id INTEGER NOT NULL,
     month TEXT NOT NULL,
     amount INTEGER NOT NULL,
     UNIQUE(ledger, category_id, month)
-  )`);
-  await db.execute(`CREATE TABLE IF NOT EXISTS user_account_settings (
+  )`),
+    exec(`CREATE TABLE IF NOT EXISTS user_account_settings (
     user_id INTEGER NOT NULL,
     ledger TEXT NOT NULL CHECK(ledger IN ('personal','business')),
     opening_balance INTEGER NOT NULL DEFAULT 0,
     opening_date TEXT NOT NULL DEFAULT '2025-01-01',
     tax_reserve_rate REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, ledger)
-  )`);
-  // migrate any per-user rows from legacy account_settings into the new per-user table
-  try {
-    await db.execute(`INSERT OR IGNORE INTO user_account_settings (user_id, ledger, opening_balance, opening_date, tax_reserve_rate)
-      SELECT user_id, ledger, opening_balance, opening_date, tax_reserve_rate FROM account_settings WHERE user_id IS NOT NULL`);
-  } catch { /* ignore */ }
-  await db.execute(`CREATE TABLE IF NOT EXISTS users (
+  )`),
+    exec(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kakao_id TEXT NOT NULL UNIQUE,
     email TEXT,
     name TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`);
-
-  // migrations for existing databases (ALTER ignores duplicate-column errors)
-  const tryAlter = async (sql: string) => { try { await db.execute(sql); } catch { /* column already exists */ } };
-  // multi-tenant: every data table gets user_id
-  await tryAlter("ALTER TABLE categories ADD COLUMN user_id INTEGER");
-  await tryAlter("ALTER TABLE transactions ADD COLUMN user_id INTEGER");
-  await tryAlter("ALTER TABLE recurring ADD COLUMN user_id INTEGER");
-  await tryAlter("ALTER TABLE budgets ADD COLUMN user_id INTEGER");
-  await tryAlter("ALTER TABLE account_settings ADD COLUMN user_id INTEGER");
-  await tryAlter("ALTER TABLE people ADD COLUMN user_id INTEGER");
-  await tryAlter("ALTER TABLE debts ADD COLUMN user_id INTEGER");
-  await tryAlter("ALTER TABLE debt_rate_history ADD COLUMN user_id INTEGER");
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id)`).catch(() => {});
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_cat_user ON categories(user_id)`).catch(() => {});
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_user_date ON transactions(user_id, date)`).catch(() => {});
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_user_type_date ON transactions(user_id, type, date)`).catch(() => {});
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_user_cat ON transactions(user_id, category_id)`).catch(() => {});
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_user_debt ON transactions(user_id, debt_id)`).catch(() => {});
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_recurring ON transactions(recurring_id)`).catch(() => {});
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_debts_user ON debts(user_id, active)`).catch(() => {});
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_budgets_user ON budgets(user_id, month)`).catch(() => {});
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_recurring_user ON recurring(user_id, active)`).catch(() => {});
-  await tryAlter("ALTER TABLE account_settings ADD COLUMN tax_reserve_rate REAL NOT NULL DEFAULT 0");
-  await tryAlter("ALTER TABLE transactions ADD COLUMN person_id INTEGER");
-  await tryAlter("ALTER TABLE transactions ADD COLUMN debt_id INTEGER");
-  await tryAlter("ALTER TABLE debts ADD COLUMN kind TEXT NOT NULL DEFAULT '기타'");
-  await tryAlter("ALTER TABLE debts ADD COLUMN grace_period_months INTEGER NOT NULL DEFAULT 0");
-  await tryAlter("ALTER TABLE debts ADD COLUMN accrued_interest INTEGER NOT NULL DEFAULT 0");
-  await tryAlter("ALTER TABLE debts ADD COLUMN last_accrual_date TEXT");
-  await tryAlter("ALTER TABLE debts ADD COLUMN mandatory_repay_income INTEGER NOT NULL DEFAULT 0");
-  await tryAlter("ALTER TABLE transactions ADD COLUMN principal_amount INTEGER");
-  await tryAlter("ALTER TABLE transactions ADD COLUMN interest_amount INTEGER");
-  await tryAlter("ALTER TABLE users ADD COLUMN image TEXT");
-  await tryAlter("ALTER TABLE users ADD COLUMN nav_order TEXT");
-  // 사업자 매출 — 부가세 분리
-  await tryAlter("ALTER TABLE transactions ADD COLUMN supply_amount INTEGER");
-  await tryAlter("ALTER TABLE transactions ADD COLUMN vat_amount INTEGER");
-
-  // Investments
-  await db.execute(`CREATE TABLE IF NOT EXISTS investments (
+  )`),
+    exec(`CREATE TABLE IF NOT EXISTS investments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     name TEXT NOT NULL,
@@ -157,8 +115,8 @@ async function init(db: Client) {
     current_price_at TEXT,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`);
-  await db.execute(`CREATE TABLE IF NOT EXISTS investment_trades (
+  )`),
+    exec(`CREATE TABLE IF NOT EXISTS investment_trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     investment_id INTEGER NOT NULL,
     user_id INTEGER,
@@ -170,19 +128,69 @@ async function init(db: Client) {
     memo TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY(investment_id) REFERENCES investments(id) ON DELETE CASCADE
-  )`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_inv_user ON investments(user_id, active)`).catch(()=>{});
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_inv_trades_user ON investment_trades(user_id, date)`).catch(()=>{});
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_inv_trades_inv ON investment_trades(investment_id)`).catch(()=>{});
-
-  await db.execute(`CREATE TABLE IF NOT EXISTS business_targets (
+  )`),
+    exec(`CREATE TABLE IF NOT EXISTS business_targets (
     user_id INTEGER NOT NULL,
     month TEXT NOT NULL,
     target_revenue INTEGER NOT NULL DEFAULT 0,
     target_profit INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, month)
-  )`);
+  )`),
+  ]);
 
+  // Phase 2: ALTER TABLE (테이블 생성 후) — 병렬, 중복 컬럼 에러는 무시
+  await Promise.all([
+    tryAlter("ALTER TABLE categories ADD COLUMN user_id INTEGER"),
+    tryAlter("ALTER TABLE transactions ADD COLUMN user_id INTEGER"),
+    tryAlter("ALTER TABLE recurring ADD COLUMN user_id INTEGER"),
+    tryAlter("ALTER TABLE budgets ADD COLUMN user_id INTEGER"),
+    tryAlter("ALTER TABLE account_settings ADD COLUMN user_id INTEGER"),
+    tryAlter("ALTER TABLE people ADD COLUMN user_id INTEGER"),
+    tryAlter("ALTER TABLE debts ADD COLUMN user_id INTEGER"),
+    tryAlter("ALTER TABLE debt_rate_history ADD COLUMN user_id INTEGER"),
+    tryAlter("ALTER TABLE account_settings ADD COLUMN tax_reserve_rate REAL NOT NULL DEFAULT 0"),
+    tryAlter("ALTER TABLE transactions ADD COLUMN person_id INTEGER"),
+    tryAlter("ALTER TABLE transactions ADD COLUMN debt_id INTEGER"),
+    tryAlter("ALTER TABLE debts ADD COLUMN kind TEXT NOT NULL DEFAULT '기타'"),
+    tryAlter("ALTER TABLE debts ADD COLUMN grace_period_months INTEGER NOT NULL DEFAULT 0"),
+    tryAlter("ALTER TABLE debts ADD COLUMN accrued_interest INTEGER NOT NULL DEFAULT 0"),
+    tryAlter("ALTER TABLE debts ADD COLUMN last_accrual_date TEXT"),
+    tryAlter("ALTER TABLE debts ADD COLUMN mandatory_repay_income INTEGER NOT NULL DEFAULT 0"),
+    tryAlter("ALTER TABLE transactions ADD COLUMN principal_amount INTEGER"),
+    tryAlter("ALTER TABLE transactions ADD COLUMN interest_amount INTEGER"),
+    tryAlter("ALTER TABLE users ADD COLUMN image TEXT"),
+    tryAlter("ALTER TABLE users ADD COLUMN nav_order TEXT"),
+    tryAlter("ALTER TABLE transactions ADD COLUMN supply_amount INTEGER"),
+    tryAlter("ALTER TABLE transactions ADD COLUMN vat_amount INTEGER"),
+  ]);
+
+  // Phase 3: CREATE INDEX (ALTER 이후) — 병렬
+  await Promise.all([
+    exec(`CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_tx_ledger ON transactions(ledger)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_rate_history_debt ON debt_rate_history(debt_id, effective_date)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_cat_user ON categories(user_id)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_tx_user_date ON transactions(user_id, date)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_tx_user_type_date ON transactions(user_id, type, date)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_tx_user_cat ON transactions(user_id, category_id)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_tx_user_debt ON transactions(user_id, debt_id)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_tx_recurring ON transactions(recurring_id)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_debts_user ON debts(user_id, active)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_budgets_user ON budgets(user_id, month)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_recurring_user ON recurring(user_id, active)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_inv_user ON investments(user_id, active)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_inv_trades_user ON investment_trades(user_id, date)`),
+    exec(`CREATE INDEX IF NOT EXISTS idx_inv_trades_inv ON investment_trades(investment_id)`),
+  ]);
+
+  // legacy migration (한 번만)
+  try {
+    await db.execute(`INSERT OR IGNORE INTO user_account_settings (user_id, ledger, opening_balance, opening_date, tax_reserve_rate)
+      SELECT user_id, ledger, opening_balance, opening_date, tax_reserve_rate FROM account_settings WHERE user_id IS NOT NULL`);
+  } catch { /* ignore */ }
+
+  // seed: 카테고리가 비어있으면 채움
   const countR = await db.execute('SELECT COUNT(*) as c FROM categories');
   const count = Number((countR.rows[0] as any).c);
   if (count === 0) {
@@ -209,7 +217,12 @@ export function getDb(): Client {
     const url = process.env.TURSO_DATABASE_URL || 'file:./data/ledger.db';
     const authToken = process.env.TURSO_AUTH_TOKEN;
     global.__ledgerDb = createClient({ url, authToken });
-    global.__ledgerInit = init(global.__ledgerDb);
+    // 프로덕션에서 SKIP_DB_INIT=1이면 스키마 초기화 30+ 쿼리 스킵 (콜드스타트 1~2초 절감)
+    if (process.env.SKIP_DB_INIT === '1') {
+      global.__ledgerInit = Promise.resolve();
+    } else {
+      global.__ledgerInit = init(global.__ledgerDb);
+    }
   }
   return global.__ledgerDb;
 }

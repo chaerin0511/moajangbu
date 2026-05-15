@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { ensureDb, Ledger, Transaction, Category, Recurring, Budget, Person, Debt, Investment, InvestmentTrade } from './db';
 import { clampDay, currentMonth, monthsBack } from './utils';
 
@@ -160,7 +161,7 @@ export async function listRecurring(userId: number): Promise<(Recurring & { cate
 
 export interface OpeningBalance { ledger: Ledger; opening_balance: number; opening_date: string; tax_reserve_rate: number }
 
-export async function getOpeningBalances(userId: number): Promise<Record<Ledger, OpeningBalance>> {
+export const getOpeningBalances = cache(async (userId: number): Promise<Record<Ledger, OpeningBalance>> => {
   const db = await ensureDb();
   const r = await db.execute({ sql: 'SELECT * FROM user_account_settings WHERE user_id=?', args: [userId] });
   const rows = plain<any>(r.rows as any[]);
@@ -177,45 +178,51 @@ export async function getOpeningBalances(userId: number): Promise<Record<Ledger,
     };
   }
   return out;
-}
+});
 
 export async function balanceAt(userId: number, ledger: Ledger, dateISO?: string): Promise<number> {
   const db = await ensureDb();
   const ob = (await getOpeningBalances(userId))[ledger];
   const dateClause = dateISO ? ' AND date <= ?' : '';
-  const params: any[] = dateISO ? [userId, ledger, ob.opening_date, dateISO] : [userId, ledger, ob.opening_date];
-  const incExpR = await db.execute({
-    sql: `SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount WHEN type='expense' THEN -amount ELSE 0 END),0) AS s
-          FROM transactions WHERE user_id=? AND ledger=? AND date >= ?${dateClause}`,
-    args: params,
+  // 3개 쿼리를 1개 CASE 집계로 통합
+  const r = await db.execute({
+    sql: `SELECT
+      COALESCE(SUM(CASE WHEN ledger=? AND type='income' THEN amount
+                        WHEN ledger=? AND type='expense' THEN -amount
+                        ELSE 0 END),0) AS direct,
+      COALESCE(SUM(CASE WHEN type='transfer' AND to_ledger=? THEN amount ELSE 0 END),0) AS tin,
+      COALESCE(SUM(CASE WHEN type='transfer' AND from_ledger=? THEN amount ELSE 0 END),0) AS tout
+     FROM transactions WHERE user_id=? AND date >= ?${dateClause}`,
+    args: dateISO
+      ? [ledger, ledger, ledger, ledger, userId, ob.opening_date, dateISO]
+      : [ledger, ledger, ledger, ledger, userId, ob.opening_date],
   });
-  const inTransR = await db.execute({
-    sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE user_id=? AND type='transfer' AND to_ledger=? AND date >= ?${dateClause}`,
-    args: params,
-  });
-  const outTransR = await db.execute({
-    sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE user_id=? AND type='transfer' AND from_ledger=? AND date >= ?${dateClause}`,
-    args: params,
-  });
-  return ob.opening_balance + N((incExpR.rows[0] as any).s) + N((inTransR.rows[0] as any).s) - N((outTransR.rows[0] as any).s);
+  const row = r.rows[0] as any;
+  return ob.opening_balance + N(row.direct) + N(row.tin) - N(row.tout);
 }
 
 export async function projectedMonthEndBalance(userId: number, ledger: Ledger): Promise<number> {
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const cur = await balanceAt(userId, ledger, todayStr);
   const db = await ensureDb();
-  const rulesR = await db.execute({ sql: 'SELECT * FROM recurring WHERE active=1 AND user_id=?', args: [userId] });
-  const rules = plain<Recurring>(rulesR.rows as any[]);
   const monthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  // balanceAt과 rules/existing을 병렬로 가져온다
+  const [cur, rulesR, existingR] = await Promise.all([
+    balanceAt(userId, ledger, todayStr),
+    db.execute({ sql: 'SELECT * FROM recurring WHERE active=1 AND user_id=?', args: [userId] }),
+    db.execute({
+      sql: `SELECT DISTINCT recurring_id FROM transactions
+            WHERE user_id=? AND recurring_id IS NOT NULL AND substr(date,1,7)=?`,
+      args: [userId, monthStr],
+    }),
+  ]);
+  const rules = plain<Recurring>(rulesR.rows as any[]);
+  const existing = new Set<number>();
+  for (const row of existingR.rows as any[]) existing.add(N(row.recurring_id));
   let delta = 0;
   for (const r of rules) {
     if (r.day_of_month <= today.getDate()) continue;
-    const existsR = await db.execute({
-      sql: `SELECT 1 AS x FROM transactions WHERE user_id=? AND recurring_id=? AND substr(date,1,7)=?`,
-      args: [userId, r.id, monthStr],
-    });
-    if (existsR.rows.length > 0) continue;
+    if (existing.has(r.id)) continue;
     if (r.type === 'income' && r.ledger === ledger) delta += N(r.amount);
     else if (r.type === 'expense' && r.ledger === ledger) delta -= N(r.amount);
     else if (r.type === 'transfer') {
@@ -274,8 +281,10 @@ function prevMonth(month: string): string {
 }
 
 export async function financialHealth(userId: number, month: string): Promise<FinancialHealth> {
-  const cur = await totalsFor(userId, month);
-  const prev = await totalsFor(userId, prevMonth(month));
+  const [cur, prev] = await Promise.all([
+    totalsFor(userId, month),
+    totalsFor(userId, prevMonth(month)),
+  ]);
   const savingsRate = cur.income > 0 ? cur.net / cur.income : 0;
   const fixedCoverage = cur.fExpense > 0 ? cur.fIncome / cur.fExpense : (cur.fIncome > 0 ? Infinity : 0);
   const pureSpend = Math.max(0, cur.pExpense - cur.fExpense);
@@ -341,34 +350,42 @@ export interface PersonStat {
 export async function personStats(userId: number, month: string): Promise<PersonStat[]> {
   const db = await ensureDb();
   const year = month.slice(0, 4);
-  const people = await listPeople(userId);
-  const out: PersonStat[] = [];
-  for (const p of people) {
-    const mR = await db.execute({
-      sql: `SELECT
+  const [people, mR, yR] = await Promise.all([
+    listPeople(userId),
+    db.execute({
+      sql: `SELECT person_id,
         COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END),0) AS income,
         COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense,
         MAX(date) AS lastDate
-       FROM transactions WHERE user_id=? AND person_id=? AND substr(date,1,7)=?`,
-      args: [userId, p.id, month],
-    });
-    const m = mR.rows[0] as any;
-    const yR = await db.execute({
-      sql: `SELECT
+       FROM transactions WHERE user_id=? AND person_id IS NOT NULL AND substr(date,1,7)=?
+       GROUP BY person_id`,
+      args: [userId, month],
+    }),
+    db.execute({
+      sql: `SELECT person_id,
         COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END),0) AS income,
         COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense
-       FROM transactions WHERE user_id=? AND person_id=? AND substr(date,1,4)=?`,
-      args: [userId, p.id, year],
-    });
-    const y = yR.rows[0] as any;
-    out.push({
+       FROM transactions WHERE user_id=? AND person_id IS NOT NULL AND substr(date,1,4)=?
+       GROUP BY person_id`,
+      args: [userId, year],
+    }),
+  ]);
+  const mMap = new Map<number, any>();
+  for (const row of mR.rows as any[]) mMap.set(N(row.person_id), row);
+  const yMap = new Map<number, any>();
+  for (const row of yR.rows as any[]) yMap.set(N(row.person_id), row);
+  return people.map(p => {
+    const m = mMap.get(p.id);
+    const y = yMap.get(p.id);
+    return {
       person: p,
-      monthIncome: N(m.income), monthExpense: N(m.expense),
-      ytdIncome: N(y.income), ytdExpense: N(y.expense),
-      lastDate: m.lastDate || null,
-    });
-  }
-  return out;
+      monthIncome: m ? N(m.income) : 0,
+      monthExpense: m ? N(m.expense) : 0,
+      ytdIncome: y ? N(y.income) : 0,
+      ytdExpense: y ? N(y.expense) : 0,
+      lastDate: m?.lastDate || null,
+    };
+  });
 }
 
 /* ─────────── Fixed expense breakdown ─────────── */
@@ -796,7 +813,14 @@ export async function adjustedSavingsRate(userId: number, month: string): Promis
   return { rate, adjustedNet: adjNet, principalRepaid: principal };
 }
 
+// 사용자별 마지막 실행 시각(분 단위)을 메모리에 캐싱. 1시간 내 재실행 스킵.
+const __recurGenCache = new Map<number, number>();
+const __RECUR_TTL_MS = 60 * 60 * 1000;
+
 export async function generateRecurring(userId: number): Promise<number> {
+  const last = __recurGenCache.get(userId);
+  const cacheNow = Date.now();
+  if (last && cacheNow - last < __RECUR_TTL_MS) return 0;
   const db = await ensureDb();
   const curMonth = currentMonth();
   const pendR = await db.execute({
@@ -805,7 +829,10 @@ export async function generateRecurring(userId: number): Promise<number> {
        AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.recurring_id=r.id AND substr(t.date,1,7)=?)`,
     args: [userId, curMonth],
   });
-  if (N((pendR.rows[0] as any).c) === 0) return 0;
+  if (N((pendR.rows[0] as any).c) === 0) {
+    __recurGenCache.set(userId, cacheNow);
+    return 0;
+  }
   const rulesR = await db.execute({ sql: 'SELECT * FROM recurring WHERE active=1 AND user_id=?', args: [userId] });
   const rules = plain<Recurring>(rulesR.rows as any[]).map(r => ({
     ...r,
@@ -815,6 +842,15 @@ export async function generateRecurring(userId: number): Promise<number> {
     category_id: r.category_id === null ? null : N(r.category_id),
   }));
   const now = new Date();
+  // 모든 recurring_id × month 존재 여부를 1회 쿼리로 미리 가져온다.
+  const existingR = await db.execute({
+    sql: `SELECT DISTINCT recurring_id, substr(date,1,7) AS m FROM transactions
+          WHERE user_id=? AND recurring_id IS NOT NULL`,
+    args: [userId],
+  });
+  const existing = new Set<string>();
+  for (const row of existingR.rows as any[]) existing.add(`${N(row.recurring_id)}|${row.m}`);
+
   let created = 0;
   const tx = await db.transaction('write');
   try {
@@ -824,14 +860,15 @@ export async function generateRecurring(userId: number): Promise<number> {
       let m = start.getMonth() + 1;
       while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
         const monthStr = `${y}-${String(m).padStart(2, '0')}`;
-        const existsR = await tx.execute({ sql: `SELECT 1 as x FROM transactions WHERE user_id=? AND recurring_id=? AND substr(date,1,7)=?`, args: [userId, rule.id, monthStr] });
-        if (existsR.rows.length === 0) {
+        const key = `${rule.id}|${monthStr}`;
+        if (!existing.has(key)) {
           const day = clampDay(y, m, rule.day_of_month);
           const date = `${monthStr}-${String(day).padStart(2, '0')}`;
           await tx.execute({
             sql: `INSERT INTO transactions (ledger, type, date, amount, category_id, from_ledger, to_ledger, memo, recurring_id, user_id) VALUES (?,?,?,?,?,?,?,?,?,?)`,
             args: [rule.ledger, rule.type, date, rule.amount, rule.category_id as any, rule.from_ledger as any, rule.to_ledger as any, rule.memo as any, rule.id, userId],
           });
+          existing.add(key);
           created++;
         }
         m++;
@@ -840,7 +877,14 @@ export async function generateRecurring(userId: number): Promise<number> {
     }
     await tx.commit();
   } catch (e) { await tx.rollback(); throw e; }
+  __recurGenCache.set(userId, cacheNow);
   return created;
+}
+
+// 외부(액션)에서 캐시 무효화할 때 사용
+export function invalidateRecurringCache(userId?: number) {
+  if (userId === undefined) __recurGenCache.clear();
+  else __recurGenCache.delete(userId);
 }
 
 void monthDiff;

@@ -1,8 +1,9 @@
 'use server';
 import { ensureDb } from './db';
+import { invalidateRecurringCache } from './queries';
 import { revalidatePath } from 'next/cache';
 import { currentUserId } from './auth-helper';
-import { signOut } from '@/auth';
+import { signOut, updateSession } from '@/auth';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 
@@ -10,7 +11,9 @@ export async function setViewMode(fd: FormData) {
   const v = String(fd.get('mode') || 'all');
   if (v !== 'all' && v !== 'personal' && v !== 'business') return;
   cookies().set('ledger_view', v, { path: '/', maxAge: 60 * 60 * 24 * 365 });
-  revalidatePath('/', 'layout');
+  // 쿠키만 갱신, 페이지는 사용자가 이동할 때 자연스럽게 새 모드로 렌더됨.
+  // (이전: revalidatePath('/', 'layout') — 모든 페이지 캐시까지 무효화돼 전 페이지 SSR 재실행)
+  revalidatePath('/');
 }
 
 export async function setBusinessTarget(fd: FormData) {
@@ -35,6 +38,7 @@ export async function updateProfileName(fd: FormData) {
   if (!name) return;
   const db = await ensureDb();
   await db.execute({ sql: 'UPDATE users SET name=? WHERE id=?', args: [name, userId] });
+  try { await updateSession({}); } catch {}
   revalidatePath('/profile'); revalidatePath('/');
 }
 
@@ -53,6 +57,14 @@ function num(v: FormDataEntryValue | null): number | null {
   if (v === null || v === '') return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+// 외래키가 본인 소유인지 확인. 아니면 null 반환 → 무효 처리.
+async function ownedId(table: 'categories' | 'people' | 'debts' | 'investments', id: number | null, userId: number): Promise<number | null> {
+  if (!id) return null;
+  const db = await ensureDb();
+  const r = await db.execute({ sql: `SELECT 1 AS x FROM ${table} WHERE id=? AND user_id=?`, args: [id, userId] });
+  return r.rows.length > 0 ? id : null;
 }
 function str(v: FormDataEntryValue | null): string | null {
   if (v === null) return null;
@@ -160,9 +172,11 @@ export async function createTransaction(fd: FormData) {
     to_ledger = String(fd.get('to_ledger'));
   }
   const { amount, supply, vat } = computeVatSplit(ledger, type, rawAmount, vat_mode, rawSupply, rawVat);
+  const safeCat = await ownedId('categories', category_id, userId);
+  const safePerson = await ownedId('people', person_id, userId);
   await db.execute({
     sql: `INSERT INTO transactions (ledger, type, date, amount, category_id, from_ledger, to_ledger, memo, person_id, user_id, supply_amount, vat_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-    args: [ledger, type, date, amount, category_id, from_ledger, to_ledger, memo, person_id, userId, supply, vat],
+    args: [ledger, type, date, amount, safeCat, from_ledger, to_ledger, memo, safePerson, userId, supply, vat],
   });
   revalidatePath('/transactions'); revalidatePath('/'); revalidatePath('/people'); revalidatePath('/sales');
 }
@@ -181,9 +195,11 @@ export async function addSale(fd: FormData) {
   if (rawAmount <= 0 && !(rawSupply && rawSupply > 0)) return;
   const { amount, supply, vat } = computeVatSplit('business', 'income', rawAmount, vat_mode, rawSupply, rawVat);
   if (amount <= 0) return;
+  const safeCat = await ownedId('categories', category_id, userId);
+  const safePerson = await ownedId('people', person_id, userId);
   await db.execute({
     sql: `INSERT INTO transactions (ledger, type, date, amount, category_id, memo, person_id, user_id, supply_amount, vat_amount) VALUES ('business','income',?,?,?,?,?,?,?,?)`,
-    args: [date, amount, category_id, memo, person_id, userId, supply, vat],
+    args: [date, amount, safeCat, memo, safePerson, userId, supply, vat],
   });
   revalidatePath('/sales'); revalidatePath('/transactions'); revalidatePath('/');
 }
@@ -208,9 +224,10 @@ export async function updateTransaction(fd: FormData) {
     to_ledger = String(fd.get('to_ledger'));
   }
   const { amount, supply, vat } = computeVatSplit(ledger, type, rawAmount, vat_mode, rawSupply, rawVat);
+  const safeCat = await ownedId('categories', category_id, userId);
   await db.execute({
     sql: `UPDATE transactions SET ledger=?, type=?, date=?, amount=?, category_id=?, from_ledger=?, to_ledger=?, memo=?, supply_amount=?, vat_amount=? WHERE id=? AND user_id=?`,
-    args: [ledger, type, date, amount, category_id, from_ledger, to_ledger, memo, supply, vat, id, userId],
+    args: [ledger, type, date, amount, safeCat, from_ledger, to_ledger, memo, supply, vat, id, userId],
   });
   revalidatePath('/transactions'); revalidatePath('/'); revalidatePath('/sales');
 }
@@ -247,6 +264,7 @@ export async function deleteCategory(fd: FormData) {
 
 export async function createRecurring(fd: FormData) {
   const userId = await currentUserId();
+  invalidateRecurringCache(userId);
   const db = await ensureDb();
   const type = String(fd.get('type'));
   const ledger = String(fd.get('ledger'));
@@ -260,15 +278,17 @@ export async function createRecurring(fd: FormData) {
     from_ledger = String(fd.get('from_ledger'));
     to_ledger = String(fd.get('to_ledger'));
   }
+  const safeCat = await ownedId('categories', category_id, userId);
   await db.execute({
     sql: `INSERT INTO recurring (ledger, type, category_id, amount, day_of_month, memo, from_ledger, to_ledger, start_date, user_id) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    args: [ledger, type, category_id, amount, day_of_month, memo, from_ledger, to_ledger, start_date, userId],
+    args: [ledger, type, safeCat, amount, day_of_month, memo, from_ledger, to_ledger, start_date, userId],
   });
   revalidatePath('/recurring');
 }
 
 export async function deleteRecurring(fd: FormData) {
   const userId = await currentUserId();
+  invalidateRecurringCache(userId);
   const id = num(fd.get('id'));
   if (!id) return;
   const db = await ensureDb();
@@ -278,6 +298,7 @@ export async function deleteRecurring(fd: FormData) {
 
 export async function toggleRecurring(fd: FormData) {
   const userId = await currentUserId();
+  invalidateRecurringCache(userId);
   const id = num(fd.get('id'));
   if (!id) return;
   const db = await ensureDb();
@@ -292,11 +313,13 @@ export async function upsertBudget(fd: FormData) {
   const month = String(fd.get('month'));
   const amount = num(fd.get('amount')) || 0;
   if (!category_id) return;
+  const safeCat = await ownedId('categories', category_id, userId);
+  if (!safeCat) return;
   const db = await ensureDb();
   // existing UNIQUE(ledger, category_id, month) is now cross-user; we lookup by user
   const existing = await db.execute({
     sql: `SELECT id FROM budgets WHERE ledger=? AND category_id=? AND month=? AND user_id=?`,
-    args: [ledger, category_id, month, userId],
+    args: [ledger, safeCat, month, userId],
   });
   if (existing.rows.length > 0) {
     const bid = Number((existing.rows[0] as any).id);
@@ -594,6 +617,7 @@ export async function setNavOrder(fd: FormData) {
     items = fd.getAll('slug').map(String).map(s => s.trim()).filter(Boolean);
   }
   await writeNavOrder(userId, items);
+  try { await updateSession({}); } catch {}
   revalidatePath('/'); revalidatePath('/settings/nav'); revalidatePath('/more');
 }
 
@@ -607,6 +631,7 @@ export async function moveNavItemUp(fd: FormData) {
     [cur[idx - 1], cur[idx]] = [cur[idx], cur[idx - 1]];
     await writeNavOrder(userId, cur);
   }
+  try { await updateSession({}); } catch {}
   revalidatePath('/'); revalidatePath('/settings/nav'); revalidatePath('/more');
 }
 
@@ -620,6 +645,7 @@ export async function moveNavItemDown(fd: FormData) {
     [cur[idx + 1], cur[idx]] = [cur[idx], cur[idx + 1]];
     await writeNavOrder(userId, cur);
   }
+  try { await updateSession({}); } catch {}
   revalidatePath('/'); revalidatePath('/settings/nav'); revalidatePath('/more');
 }
 
@@ -632,6 +658,7 @@ export async function toggleNavItem(fd: FormData) {
   if (idx >= 0) cur.splice(idx, 1);
   else cur.push(slug);
   await writeNavOrder(userId, cur);
+  try { await updateSession({}); } catch {}
   revalidatePath('/'); revalidatePath('/settings/nav'); revalidatePath('/more');
 }
 

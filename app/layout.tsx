@@ -4,7 +4,6 @@ import type { Metadata } from 'next';
 import NavLink from '@/components/NavLink';
 import BottomTabs from '@/components/BottomTabs';
 import { auth, signOut } from '@/auth';
-import { ensureDb } from '@/lib/db';
 import { ALL_NAV_ITEMS, parseNavOrder, navLabel, navIcon } from '@/lib/nav-items';
 import ViewModeToggle from '@/components/ViewModeToggle';
 import { getViewMode } from '@/lib/view-mode';
@@ -31,23 +30,11 @@ export const viewport = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
-  // 최신 프로필 정보(이름·이미지)는 DB에서 직접 읽음 — JWT 세션 캐시 우회
-  let displayName: string | null = null;
-  let displayImage: string | null = null;
-  let navOrderRaw: string | null = null;
-  if (session && (session as any).userId) {
-    try {
-      const db = await ensureDb();
-      const r = await db.execute({ sql: 'SELECT name, image, nav_order FROM users WHERE id=?', args: [Number((session as any).userId)] });
-      const u = r.rows[0] as any;
-      if (u) {
-        displayName = u.name || session.user?.name || null;
-        displayImage = u.image || session.user?.image || null;
-        navOrderRaw = u.nav_order || null;
-      }
-    } catch { /* fall back to session */ }
-  }
-  const initial = String(displayName || session?.user?.name || '?').charAt(0);
+  // JWT 세션에서 직접 읽음 — DB 왕복 제거. 프로필/네비 변경 시 JWT가 trigger:'update'로 갱신됨.
+  const displayName: string | null = session?.user?.name || null;
+  const displayImage: string | null = session?.user?.image || null;
+  const navOrderRaw: string | null = (session as any)?.navOrder || null;
+  const initial = String(displayName || '?').charAt(0);
   const viewMode = getViewMode();
   const navOrder = parseNavOrder(navOrderRaw);
   const allowed = new Set(ALL_NAV_ITEMS.map(i => i.href));
