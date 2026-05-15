@@ -1,11 +1,11 @@
 import { signIn } from '@/auth';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
-import LoginCard from '@/components/LoginCard';
+import SignupFlow from '@/components/SignupFlow';
 
 export const metadata = {
-  title: '모아장부 · 진짜 쓸 수 있는 돈을 보여주는 가계부',
-  description: '개인 가계부 + 사업자 현금흐름을 한 곳에서. 고정지출·세금·비상금을 자동으로 떼고 실제 쓸 수 있는 금액만 보여줍니다.',
+  title: '회원가입 · 모아장부',
+  description: '개인 가계부 + 사업자 현금흐름을 한 곳에서.',
 };
 
 const MINT = '#3aa37a';
@@ -19,7 +19,7 @@ async function signupAction(fd: FormData) {
   await signIn('kakao', { redirectTo: '/' });
 }
 
-export default function LoginPage() {
+export default function SignupPage() {
   return (
     <div className="-mx-4 sm:-mx-5 -my-5 sm:-my-8 -mb-20 sm:-mb-8 min-h-[100dvh] flex items-center justify-center bg-white text-slate-900">
       <div className="w-full max-w-md px-6 py-16 sm:py-20">
@@ -32,9 +32,7 @@ export default function LoginPage() {
           <span className="text-[15px] font-semibold tracking-tight">모아장부</span>
         </Link>
 
-        <div className="mt-10">
-          <LoginCard signupAction={signupAction} />
-        </div>
+        <SignupFlow signupAction={signupAction} />
 
         <p className="mt-12 text-center text-[11px] text-slate-400">
           © {new Date().getFullYear()} 모아장부
