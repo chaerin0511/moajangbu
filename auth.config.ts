@@ -4,6 +4,7 @@ import Kakao from 'next-auth/providers/kakao';
 export const authConfig = {
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   trustHost: true,
+  debug: true,
   providers: [
     Kakao({
       clientId: process.env.KAKAO_CLIENT_ID!,

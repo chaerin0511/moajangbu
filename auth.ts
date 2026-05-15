@@ -4,6 +4,10 @@ import { ensureDb } from './lib/db';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  events: {
+    async signIn(msg) { console.log('[event:signIn]', JSON.stringify(msg, null, 2)); },
+    async createUser(msg) { console.log('[event:createUser]', JSON.stringify(msg)); },
+  },
   callbacks: {
     ...authConfig.callbacks,
     async signIn({ profile, account }) {
