@@ -1,4 +1,4 @@
-import { ensureDb, Ledger, Transaction, Category, Recurring, Budget, Person, Debt } from './db';
+import { ensureDb, Ledger, Transaction, Category, Recurring, Budget, Person, Debt, Investment, InvestmentTrade } from './db';
 import { clampDay, currentMonth, monthsBack } from './utils';
 
 // libsql rows are plain objects, but spread for safety / consistent shape.
@@ -844,3 +844,137 @@ export async function generateRecurring(userId: number): Promise<number> {
 }
 
 void monthDiff;
+
+/* ─────────── Investments ─────────── */
+
+export interface InvestmentRow extends Investment {
+  total_quantity: number;
+  total_invested: number;
+  avg_cost: number;
+  realized_pnl: number;
+  current_value: number;
+  unrealized_pnl: number;
+  return_pct: number;
+  last_trade_date: string | null;
+}
+
+interface TradeAgg {
+  buyQty: number;
+  buyAmt: number;
+  sellQty: number;
+  sellAmt: number;
+  divAmt: number;
+  feeAmt: number;
+  lastDate: string | null;
+}
+
+async function aggregateTrades(userId: number): Promise<Map<number, TradeAgg>> {
+  const db = await ensureDb();
+  const r = await db.execute({
+    sql: `SELECT investment_id, type,
+            COALESCE(SUM(quantity),0) AS q,
+            COALESCE(SUM(amount),0) AS a,
+            MAX(date) AS lastDate
+          FROM investment_trades WHERE user_id=?
+          GROUP BY investment_id, type`,
+    args: [userId],
+  });
+  const map = new Map<number, TradeAgg>();
+  for (const row of r.rows as any[]) {
+    const id = N(row.investment_id);
+    const cur = map.get(id) || { buyQty: 0, buyAmt: 0, sellQty: 0, sellAmt: 0, divAmt: 0, feeAmt: 0, lastDate: null };
+    const q = Number(row.q) || 0;
+    const a = N(row.a);
+    if (row.type === 'buy') { cur.buyQty += q; cur.buyAmt += a; }
+    else if (row.type === 'sell') { cur.sellQty += q; cur.sellAmt += a; }
+    else if (row.type === 'dividend') { cur.divAmt += a; }
+    else if (row.type === 'fee') { cur.feeAmt += a; }
+    if (row.lastDate && (!cur.lastDate || row.lastDate > cur.lastDate)) cur.lastDate = row.lastDate;
+    map.set(id, cur);
+  }
+  return map;
+}
+
+function computeMetrics(inv: Investment, agg: TradeAgg | undefined): InvestmentRow {
+  const a = agg || { buyQty: 0, buyAmt: 0, sellQty: 0, sellAmt: 0, divAmt: 0, feeAmt: 0, lastDate: null };
+  const avg_cost = a.buyQty > 0 ? a.buyAmt / a.buyQty : 0;
+  const total_quantity = Math.max(0, a.buyQty - a.sellQty);
+  // realized pnl: sell amount - (sold qty * avg cost) + dividends - fees
+  const realized_pnl = a.sellAmt - (a.sellQty * avg_cost) + a.divAmt - a.feeAmt;
+  // cost basis of currently held shares
+  const remaining_cost = total_quantity * avg_cost;
+  const current_value = total_quantity * Number(inv.current_price || 0);
+  const unrealized_pnl = current_value - remaining_cost;
+  // total_invested = cumulative cost basis tracking (buy - sell + fee - dividend)
+  const total_invested = a.buyAmt - a.sellAmt + a.feeAmt - a.divAmt;
+  const return_pct = remaining_cost > 0 ? unrealized_pnl / remaining_cost : 0;
+  return {
+    ...inv,
+    current_price: Number(inv.current_price) || 0,
+    active: N(inv.active),
+    total_quantity,
+    total_invested,
+    avg_cost,
+    realized_pnl,
+    current_value,
+    unrealized_pnl,
+    return_pct,
+    last_trade_date: a.lastDate,
+  };
+}
+
+export async function listInvestments(userId: number): Promise<InvestmentRow[]> {
+  const db = await ensureDb();
+  const r = await db.execute({ sql: 'SELECT * FROM investments WHERE user_id=? ORDER BY active DESC, name', args: [userId] });
+  const invs = plain<Investment>(r.rows as any[]);
+  const agg = await aggregateTrades(userId);
+  return invs.map(inv => computeMetrics(inv, agg.get(inv.id)));
+}
+
+export async function getInvestment(userId: number, id: number): Promise<InvestmentRow | null> {
+  const db = await ensureDb();
+  const r = await db.execute({ sql: 'SELECT * FROM investments WHERE id=? AND user_id=?', args: [id, userId] });
+  if (r.rows.length === 0) return null;
+  const inv = { ...(r.rows[0] as any) } as Investment;
+  const agg = await aggregateTrades(userId);
+  return computeMetrics(inv, agg.get(inv.id));
+}
+
+export async function listInvestmentTrades(userId: number, investmentId: number): Promise<InvestmentTrade[]> {
+  const db = await ensureDb();
+  const r = await db.execute({
+    sql: `SELECT * FROM investment_trades WHERE user_id=? AND investment_id=? ORDER BY date DESC, id DESC`,
+    args: [userId, investmentId],
+  });
+  return (r.rows as any[]).map(row => ({
+    ...row,
+    investment_id: N(row.investment_id),
+    quantity: Number(row.quantity) || 0,
+    price: Number(row.price) || 0,
+    amount: N(row.amount),
+  })) as InvestmentTrade[];
+}
+
+export interface InvestmentSummary {
+  totalInvested: number;
+  totalCurrent: number;
+  totalRealized: number;
+  totalUnrealized: number;
+  totalReturnPct: number;
+  activeCount: number;
+}
+
+export async function investmentSummary(userId: number): Promise<InvestmentSummary> {
+  const rows = await listInvestments(userId);
+  let totalInvested = 0, totalCurrent = 0, totalRealized = 0, totalUnrealized = 0, activeCount = 0, costBasisRemaining = 0;
+  for (const r of rows) {
+    if (r.active) activeCount++;
+    totalCurrent += r.current_value;
+    totalRealized += r.realized_pnl;
+    totalUnrealized += r.unrealized_pnl;
+    totalInvested += r.total_invested;
+    costBasisRemaining += r.total_quantity * r.avg_cost;
+  }
+  const totalReturnPct = costBasisRemaining > 0 ? totalUnrealized / costBasisRemaining : 0;
+  return { totalInvested, totalCurrent, totalRealized, totalUnrealized, totalReturnPct, activeCount };
+}

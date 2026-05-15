@@ -385,6 +385,174 @@ export async function recordDebtPayment(fd: FormData) {
   revalidatePath('/debts'); revalidatePath('/transactions'); revalidatePath('/');
 }
 
+/* ─────────── Investments ─────────── */
+
+export async function createInvestment(fd: FormData) {
+  const userId = await currentUserId();
+  const name = String(fd.get('name') || '').trim();
+  if (!name) return;
+  const ticker = str(fd.get('ticker'));
+  const type = String(fd.get('type') || '주식').trim();
+  const currency = String(fd.get('currency') || 'KRW').trim();
+  const current_price = num(fd.get('current_price')) || 0;
+  const db = await ensureDb();
+  await db.execute({
+    sql: `INSERT INTO investments (user_id, name, ticker, type, currency, current_price, current_price_at)
+          VALUES (?,?,?,?,?,?,?)`,
+    args: [userId, name, ticker, type, currency, current_price, new Date().toISOString().slice(0, 10)],
+  });
+  revalidatePath('/investments');
+}
+
+export async function updateInvestmentPrice(fd: FormData) {
+  const userId = await currentUserId();
+  const id = num(fd.get('id'));
+  const current_price = num(fd.get('current_price'));
+  if (!id || current_price === null) return;
+  const db = await ensureDb();
+  const owner = await db.execute({ sql: 'SELECT 1 AS x FROM investments WHERE id=? AND user_id=?', args: [id, userId] });
+  if (owner.rows.length === 0) return;
+  await db.execute({
+    sql: `UPDATE investments SET current_price=?, current_price_at=? WHERE id=? AND user_id=?`,
+    args: [current_price, new Date().toISOString().slice(0, 10), id, userId],
+  });
+  revalidatePath('/investments'); revalidatePath(`/investments/${id}`);
+}
+
+export async function deleteInvestment(fd: FormData) {
+  const userId = await currentUserId();
+  const id = num(fd.get('id'));
+  if (!id) return;
+  const db = await ensureDb();
+  // delete trades first (defensive — FK CASCADE may not trigger without PRAGMA)
+  await db.execute({ sql: 'DELETE FROM investment_trades WHERE investment_id=? AND user_id=?', args: [id, userId] });
+  await db.execute({ sql: 'DELETE FROM investments WHERE id=? AND user_id=?', args: [id, userId] });
+  revalidatePath('/investments');
+}
+
+export async function toggleInvestment(fd: FormData) {
+  const userId = await currentUserId();
+  const id = num(fd.get('id'));
+  if (!id) return;
+  const db = await ensureDb();
+  await db.execute({ sql: 'UPDATE investments SET active = 1 - active WHERE id=? AND user_id=?', args: [id, userId] });
+  revalidatePath('/investments');
+}
+
+export async function addInvestmentTrade(fd: FormData) {
+  const userId = await currentUserId();
+  const investment_id = num(fd.get('investment_id'));
+  if (!investment_id) return;
+  const date = String(fd.get('date') || '').trim();
+  const type = String(fd.get('type') || '').trim();
+  if (!date || !['buy','sell','dividend','fee'].includes(type)) return;
+  const quantity = num(fd.get('quantity')) || 0;
+  const price = num(fd.get('price')) || 0;
+  let amount = num(fd.get('amount'));
+  if (amount === null || amount === 0) amount = Math.round(quantity * price);
+  const memo = str(fd.get('memo'));
+  const db = await ensureDb();
+  const owner = await db.execute({ sql: 'SELECT 1 AS x FROM investments WHERE id=? AND user_id=?', args: [investment_id, userId] });
+  if (owner.rows.length === 0) return;
+  await db.execute({
+    sql: `INSERT INTO investment_trades (investment_id, user_id, date, type, quantity, price, amount, memo)
+          VALUES (?,?,?,?,?,?,?,?)`,
+    args: [investment_id, userId, date, type, quantity, price, amount, memo],
+  });
+  revalidatePath('/investments'); revalidatePath(`/investments/${investment_id}`);
+}
+
+export async function deleteInvestmentTrade(fd: FormData) {
+  const userId = await currentUserId();
+  const id = num(fd.get('id'));
+  const investment_id = num(fd.get('investment_id'));
+  if (!id) return;
+  const db = await ensureDb();
+  await db.execute({ sql: 'DELETE FROM investment_trades WHERE id=? AND user_id=?', args: [id, userId] });
+  revalidatePath('/investments');
+  if (investment_id) revalidatePath(`/investments/${investment_id}`);
+}
+
+/* ─────────── Nav order ─────────── */
+
+import { ALL_NAV_ITEMS, DEFAULT_NAV_ORDER } from './nav-items';
+
+async function readNavOrder(userId: number): Promise<string[]> {
+  const db = await ensureDb();
+  const r = await db.execute({ sql: 'SELECT nav_order FROM users WHERE id=?', args: [userId] });
+  const row = r.rows[0] as any;
+  const raw = row?.nav_order;
+  if (!raw) return [...DEFAULT_NAV_ORDER];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [...DEFAULT_NAV_ORDER];
+    const allowed = new Set(ALL_NAV_ITEMS.map(i => i.href));
+    return parsed.filter((s: any) => typeof s === 'string' && allowed.has(s));
+  } catch { return [...DEFAULT_NAV_ORDER]; }
+}
+
+async function writeNavOrder(userId: number, order: string[]) {
+  const db = await ensureDb();
+  const allowed = new Set(ALL_NAV_ITEMS.map(i => i.href));
+  const cleaned: string[] = [];
+  const seen = new Set<string>();
+  for (const s of order) {
+    if (allowed.has(s) && !seen.has(s)) { cleaned.push(s); seen.add(s); }
+  }
+  await db.execute({ sql: 'UPDATE users SET nav_order=? WHERE id=?', args: [JSON.stringify(cleaned), userId] });
+}
+
+export async function setNavOrder(fd: FormData) {
+  const userId = await currentUserId();
+  let items: string[] = [];
+  const orderStr = fd.get('order');
+  if (orderStr) {
+    items = String(orderStr).split(',').map(s => s.trim()).filter(Boolean);
+  } else {
+    items = fd.getAll('slug').map(String).map(s => s.trim()).filter(Boolean);
+  }
+  await writeNavOrder(userId, items);
+  revalidatePath('/'); revalidatePath('/settings/nav'); revalidatePath('/more');
+}
+
+export async function moveNavItemUp(fd: FormData) {
+  const userId = await currentUserId();
+  const slug = String(fd.get('slug') || '');
+  if (!slug) return;
+  const cur = await readNavOrder(userId);
+  const idx = cur.indexOf(slug);
+  if (idx > 0) {
+    [cur[idx - 1], cur[idx]] = [cur[idx], cur[idx - 1]];
+    await writeNavOrder(userId, cur);
+  }
+  revalidatePath('/'); revalidatePath('/settings/nav'); revalidatePath('/more');
+}
+
+export async function moveNavItemDown(fd: FormData) {
+  const userId = await currentUserId();
+  const slug = String(fd.get('slug') || '');
+  if (!slug) return;
+  const cur = await readNavOrder(userId);
+  const idx = cur.indexOf(slug);
+  if (idx >= 0 && idx < cur.length - 1) {
+    [cur[idx + 1], cur[idx]] = [cur[idx], cur[idx + 1]];
+    await writeNavOrder(userId, cur);
+  }
+  revalidatePath('/'); revalidatePath('/settings/nav'); revalidatePath('/more');
+}
+
+export async function toggleNavItem(fd: FormData) {
+  const userId = await currentUserId();
+  const slug = String(fd.get('slug') || '');
+  if (!slug) return;
+  const cur = await readNavOrder(userId);
+  const idx = cur.indexOf(slug);
+  if (idx >= 0) cur.splice(idx, 1);
+  else cur.push(slug);
+  await writeNavOrder(userId, cur);
+  revalidatePath('/'); revalidatePath('/settings/nav'); revalidatePath('/more');
+}
+
 export async function deleteBudget(fd: FormData) {
   const userId = await currentUserId();
   const id = num(fd.get('id'));

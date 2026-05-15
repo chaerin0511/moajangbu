@@ -5,6 +5,7 @@ import NavLink from '@/components/NavLink';
 import BottomTabs from '@/components/BottomTabs';
 import { auth, signOut } from '@/auth';
 import { ensureDb } from '@/lib/db';
+import { ALL_NAV_ITEMS, parseNavOrder, navLabel, navIcon } from '@/lib/nav-items';
 
 export const metadata: Metadata = {
   title: { default: '모아장부 · 가계와 사업을 한곳에', template: '%s · 모아장부' },
@@ -31,18 +32,27 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // 최신 프로필 정보(이름·이미지)는 DB에서 직접 읽음 — JWT 세션 캐시 우회
   let displayName: string | null = null;
   let displayImage: string | null = null;
+  let navOrderRaw: string | null = null;
   if (session && (session as any).userId) {
     try {
       const db = await ensureDb();
-      const r = await db.execute({ sql: 'SELECT name, image FROM users WHERE id=?', args: [Number((session as any).userId)] });
+      const r = await db.execute({ sql: 'SELECT name, image, nav_order FROM users WHERE id=?', args: [Number((session as any).userId)] });
       const u = r.rows[0] as any;
       if (u) {
         displayName = u.name || session.user?.name || null;
         displayImage = u.image || session.user?.image || null;
+        navOrderRaw = u.nav_order || null;
       }
     } catch { /* fall back to session */ }
   }
   const initial = String(displayName || session?.user?.name || '?').charAt(0);
+  const navOrder = parseNavOrder(navOrderRaw);
+  const allowed = new Set(ALL_NAV_ITEMS.map(i => i.href));
+  const mainItems = navOrder.filter(h => allowed.has(h));
+  const mobileItems = [
+    ...mainItems.slice(0, 4).map(href => ({ href, label: navLabel(href), icon: navIcon(href) })),
+    { href: '/more', label: '더보기', icon: navIcon('/more') },
+  ];
 
   return (
     <html lang="ko">
@@ -86,15 +96,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   모아장부
                 </Link>
                 <div className="flex gap-0.5 flex-1 min-w-0">
-                  <NavLink href="/">대시보드</NavLink>
-                  <NavLink href="/transactions">거래</NavLink>
-                  <NavLink href="/statistics">통계</NavLink>
-                  <NavLink href="/recurring">고정거래</NavLink>
-                  <NavLink href="/budgets">예산</NavLink>
-                  <NavLink href="/categories">카테고리</NavLink>
-                  <NavLink href="/people">가족</NavLink>
-                  <NavLink href="/debts">대출</NavLink>
-                  <NavLink href="/settings">설정</NavLink>
+                  {mainItems.map(h => (
+                    <NavLink key={h} href={h}>{navLabel(h)}</NavLink>
+                  ))}
+                  <NavLink href="/more">더보기</NavLink>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <Link href="/profile" className="flex items-center gap-2.5 hover:opacity-80">
@@ -119,7 +124,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
         <main className="max-w-6xl mx-auto px-4 sm:px-5 py-5 sm:py-8 pb-20 sm:pb-8">{children}</main>
 
-        {session && <BottomTabs />}
+        {session && <BottomTabs items={mobileItems} />}
       </body>
     </html>
   );

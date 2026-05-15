@@ -140,6 +140,37 @@ async function init(db: Client) {
   await tryAlter("ALTER TABLE transactions ADD COLUMN principal_amount INTEGER");
   await tryAlter("ALTER TABLE transactions ADD COLUMN interest_amount INTEGER");
   await tryAlter("ALTER TABLE users ADD COLUMN image TEXT");
+  await tryAlter("ALTER TABLE users ADD COLUMN nav_order TEXT");
+
+  // Investments
+  await db.execute(`CREATE TABLE IF NOT EXISTS investments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    name TEXT NOT NULL,
+    ticker TEXT,
+    type TEXT NOT NULL DEFAULT '주식',
+    currency TEXT NOT NULL DEFAULT 'KRW',
+    current_price REAL NOT NULL DEFAULT 0,
+    current_price_at TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`);
+  await db.execute(`CREATE TABLE IF NOT EXISTS investment_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    investment_id INTEGER NOT NULL,
+    user_id INTEGER,
+    date TEXT NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('buy','sell','dividend','fee')),
+    quantity REAL NOT NULL DEFAULT 0,
+    price REAL NOT NULL DEFAULT 0,
+    amount INTEGER NOT NULL,
+    memo TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(investment_id) REFERENCES investments(id) ON DELETE CASCADE
+  )`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_inv_user ON investments(user_id, active)`).catch(()=>{});
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_inv_trades_user ON investment_trades(user_id, date)`).catch(()=>{});
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_inv_trades_inv ON investment_trades(investment_id)`).catch(()=>{});
 
   const countR = await db.execute('SELECT COUNT(*) as c FROM categories');
   const count = Number((countR.rows[0] as any).c);
@@ -219,6 +250,32 @@ export interface Debt {
   active: number;
 }
 export interface DebtRateHistory { id: number; debt_id: number; effective_date: string; rate: number }
+
+export interface Investment {
+  id: number;
+  name: string;
+  ticker: string | null;
+  type: string;
+  currency: string;
+  current_price: number;
+  current_price_at: string | null;
+  active: number;
+  created_at: string;
+}
+
+export interface InvestmentTrade {
+  id: number;
+  investment_id: number;
+  date: string;
+  type: 'buy' | 'sell' | 'dividend' | 'fee';
+  quantity: number;
+  price: number;
+  amount: number;
+  memo: string | null;
+  created_at: string;
+}
+
+export const INVESTMENT_TYPES = ['주식','ETF','펀드','채권','암호화폐','부동산','기타'] as const;
 
 export const DEBT_KINDS = [
   '학자금(취업후상환)',
