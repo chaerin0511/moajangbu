@@ -45,10 +45,18 @@ export async function updateProfileName(fd: FormData) {
 export async function deleteAccount() {
   const userId = await currentUserId();
   const db = await ensureDb();
-  for (const tbl of ['transactions','recurring','budgets','categories','people','debts','debt_rate_history','account_settings','user_account_settings']) {
-    try { await db.execute({ sql: `DELETE FROM ${tbl} WHERE user_id=?`, args: [userId] }); } catch {}
+  // 부분 삭제 방지: 단일 트랜잭션으로 묶음. 한 테이블이라도 실패하면 전체 롤백.
+  const tx = await db.transaction('write');
+  try {
+    for (const tbl of ['transactions','recurring','budgets','categories','people','debts','debt_rate_history','account_settings','user_account_settings','investment_trades','investments','business_targets']) {
+      try { await tx.execute({ sql: `DELETE FROM ${tbl} WHERE user_id=?`, args: [userId] }); } catch {}
+    }
+    await tx.execute({ sql: 'DELETE FROM users WHERE id=?', args: [userId] });
+    await tx.commit();
+  } catch (e) {
+    await tx.rollback();
+    throw e;
   }
-  await db.execute({ sql: 'DELETE FROM users WHERE id=?', args: [userId] });
   await signOut({ redirect: false });
   redirect('/login');
 }
@@ -327,7 +335,7 @@ export async function upsertBudget(fd: FormData) {
   } else {
     await db.execute({
       sql: `INSERT INTO budgets (ledger, category_id, month, amount, user_id) VALUES (?,?,?,?,?)`,
-      args: [ledger, category_id, month, amount, userId],
+      args: [ledger, safeCat, month, amount, userId],
     });
   }
   revalidatePath('/budgets'); revalidatePath('/');

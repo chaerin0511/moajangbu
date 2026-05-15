@@ -11,7 +11,8 @@ export const authConfig = {
       clientSecret: process.env.KAKAO_CLIENT_SECRET || '',
     }),
   ],
-  session: { strategy: 'jwt', maxAge: 60 * 60 * 24 * 30 }, // 30일 자동 로그인 유지
+  // 금전 데이터 보호: 세션 7일로 단축, 24h마다 갱신(갱신 시 JWT 콜백이 DB 상태 재확인)
+  session: { strategy: 'jwt', maxAge: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },
   pages: { signIn: '/login' },
   callbacks: {
     authorized({ auth, request }) {
