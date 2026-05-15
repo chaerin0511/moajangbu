@@ -3,6 +3,7 @@ import { createDebt, deleteDebt, toggleDebt, recordDebtPayment, addDebtRate } fr
 import { DEBT_KINDS } from '@/lib/db';
 import { currentMonth, formatWon, todayISO } from '@/lib/utils';
 import { currentUserId } from '@/lib/auth-helper';
+import ConfirmButton from '@/components/ConfirmButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -157,7 +158,7 @@ export default async function Page() {
                           <td className="text-right">
                             <form action={deleteDebt}>
                               <input type="hidden" name="id" value={d.id} />
-                              <button className="btn-danger">삭제</button>
+                              <ConfirmButton message={`대출 "${d.name}"을(를) 삭제할까요? 연결된 상환 거래의 대출 연결이 끊어지지만 거래 자체는 남습니다.`} className="btn-danger">삭제</ConfirmButton>
                             </form>
                           </td>
                         </tr>

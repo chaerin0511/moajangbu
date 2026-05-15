@@ -2,6 +2,7 @@ import { listCategories } from '@/lib/queries';
 import { createCategory, deleteCategory } from '@/lib/actions';
 import { currentUserId } from '@/lib/auth-helper';
 import { getViewMode } from '@/lib/view-mode';
+import ConfirmButton from '@/components/ConfirmButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +44,7 @@ export default async function Page() {
                   <span>{c.name}</span>
                   <form action={deleteCategory}>
                     <input type="hidden" name="id" value={c.id} />
-                    <button className="btn-danger px-2 py-1 text-xs">삭제</button>
+                    <ConfirmButton message={`카테고리 "${c.name}"을(를) 삭제할까요? 연결된 거래의 카테고리는 비워집니다.`} className="btn-danger px-2 py-1 text-xs">삭제</ConfirmButton>
                   </form>
                 </li>
               ))}

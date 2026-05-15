@@ -6,6 +6,7 @@ import RecurringForm from '@/components/RecurringForm';
 import { revalidatePath } from 'next/cache';
 import { currentUserId } from '@/lib/auth-helper';
 import { getViewMode } from '@/lib/view-mode';
+import ConfirmButton from '@/components/ConfirmButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,7 +71,7 @@ export default async function Page() {
                 <td className="text-right">
                   <form action={deleteRecurring}>
                     <input type="hidden" name="id" value={r.id} />
-                    <button className="btn-danger px-2 py-1 text-xs">삭제</button>
+                    <ConfirmButton message="이 고정거래를 삭제할까요? 이미 생성된 과거 거래는 그대로 남습니다." className="btn-danger px-2 py-1 text-xs">삭제</ConfirmButton>
                   </form>
                 </td>
               </tr>

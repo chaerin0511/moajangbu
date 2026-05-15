@@ -138,58 +138,80 @@ export default async function BusinessDashboard({ userId, month }: { userId: num
         </div>
       </div>
 
-      {/* Hero KPI */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* 1. 이번달 매출 */}
-        <div className="card p-5">
-          <div className="label">이번달 매출 (공급가액)</div>
-          <div className="text-2xl font-bold tabular-nums mt-1 text-amber-600">{formatWon(sales.supply)}</div>
-          <div className="text-xs text-slate-500 mt-1 tabular-nums">
-            부가세 {formatWon(sales.vat)} · 합계 {formatWon(sales.total)}
-          </div>
-          {revDiff && (
-            <div className={`text-xs mt-2 ${revDiff.positive ? 'text-emerald-600' : 'text-rose-500'}`}>
-              전월 대비 {revDiff.text}
+      {/* 종합 카드 — 이번달 핵심 4지표 + 올해 누적 */}
+      <section className="rounded-2xl bg-white border border-slate-100 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
+        {/* 매출/이익 — 메인 2개 그린 테두리 */}
+        <div className="grid sm:grid-cols-2 gap-2 p-2">
+          {[
+            { key: 'rev',
+              label: '이번달 매출 (공급가액)',
+              value: sales.supply,
+              valueColor: 'text-slate-900',
+              sub: `부가세 ${formatWon(sales.vat)} · 합계 ${formatWon(sales.total)}`,
+              diff: revDiff },
+            { key: 'profit',
+              label: '영업이익',
+              value: op.profit,
+              valueColor: op.profit < 0 ? 'text-rose-600' : 'text-slate-900',
+              sub: `매출 대비 ${pct(op.profitMargin)}`,
+              diff: profitDiff },
+          ].map(c => (
+            <div key={c.key} className="rounded-xl bg-white px-4 py-3.5" style={{ border: '1.5px solid var(--primary)' }}>
+              <span className="text-[11px] uppercase tracking-[0.08em] font-semibold text-slate-400">{c.label}</span>
+              <div className={`mt-2 text-[24px] font-bold tabular-nums leading-none tracking-tight ${c.valueColor}`}>
+                {formatWon(c.value)}
+              </div>
+              <div className="mt-2.5 flex items-center justify-between text-[11px] tabular-nums">
+                <span className="text-slate-500">{c.sub}</span>
+                {c.diff && (
+                  <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-medium ${c.diff.positive ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
+                    {c.diff.text}
+                  </span>
+                )}
+              </div>
             </div>
-          )}
+          ))}
         </div>
 
-        {/* 2. 영업이익 */}
-        <div className="card p-5">
-          <div className="label">영업이익</div>
-          <div className={`text-2xl font-bold tabular-nums mt-1 ${op.profit < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-            {formatWon(op.profit)}
-          </div>
-          <div className="text-xs text-slate-500 mt-1">매출 대비 {pct(op.profitMargin)}</div>
-          {profitDiff && (
-            <div className={`text-xs mt-2 ${profitDiff.positive ? 'text-emerald-600' : 'text-rose-500'}`}>
-              전월 대비 {profitDiff.text}
+        {/* 세금/VAT — 보조 2열 */}
+        <div className="grid grid-cols-2 border-t border-slate-100 bg-slate-50/50">
+          <div className="px-4 py-3 border-r border-slate-100">
+            <div className="flex items-baseline justify-between">
+              <span className="text-[11px] uppercase tracking-[0.08em] font-semibold text-slate-400">다음 부가세</span>
+              <span className={`text-[10px] tabular-nums font-medium ${dDay <= 7 ? 'text-rose-600' : dDay <= 30 ? 'text-amber-600' : 'text-slate-500'}`}>
+                {dDay >= 0 ? `D-${dDay}` : `D+${-dDay}`}
+              </span>
             </div>
-          )}
-        </div>
-
-        {/* 3. VAT 다음 신고 */}
-        <div className="card p-5">
-          <div className="label">다음 부가세 신고</div>
-          <div className="text-2xl font-bold tabular-nums mt-1 text-indigo-600">{formatWon(vatNext.due)}</div>
-          <div className="text-xs text-slate-500 mt-1">{vatNext.period} · 마감 {vatNext.deadline.slice(5).replace('-', '/')}</div>
-          <div className={`text-xs mt-2 ${dDay <= 7 ? 'text-rose-600' : dDay <= 30 ? 'text-amber-600' : 'text-slate-500'}`}>
-            {dDay >= 0 ? `D-${dDay}` : `D+${-dDay}`}
+            <div className="mt-1 text-[17px] font-bold tabular-nums leading-none">{formatWon(vatNext.due)}</div>
+            <div className="mt-1 text-[10px] text-slate-400 tabular-nums">{vatNext.period} · 마감 {vatNext.deadline.slice(5).replace('-', '/')}</div>
+          </div>
+          <div className="px-4 py-3">
+            <div className="flex items-baseline justify-between">
+              <span className="text-[11px] uppercase tracking-[0.08em] font-semibold text-slate-400">세금 충당금</span>
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${reserveOk ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
+                {reserveOk ? '충분' : '부족'}
+              </span>
+            </div>
+            <div className="mt-1 text-[17px] font-bold tabular-nums leading-none">{formatWon(tax.reservedBalance)}</div>
+            <div className="mt-1 text-[10px] text-slate-400 tabular-nums">
+              잔액 {formatWon(bizBal)}{Number.isFinite(reserveRatio) ? ` (${pct(reserveRatio)})` : ''}
+            </div>
           </div>
         </div>
 
-        {/* 4. 세금 충당금 */}
-        <div className="card p-5">
-          <div className="flex items-center justify-between">
-            <div className="label">세금 충당금</div>
-            <span className={`chip ${reserveOk ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-              {reserveOk ? '충분' : '부족'}
-            </span>
-          </div>
-          <div className="text-2xl font-bold tabular-nums mt-1">{formatWon(tax.reservedBalance)}</div>
-          <div className="text-xs text-slate-500 mt-1 tabular-nums">
-            사업자 잔액 {formatWon(bizBal)} {Number.isFinite(reserveRatio) ? `(${pct(reserveRatio)})` : ''}
-          </div>
+        {/* YTD 누적 — 4열 압축 */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 border-t border-slate-100 divide-x divide-slate-100">
+          {[
+            { l: `${year} 누적 매출`, v: ytd.revenue, t: '' },
+            { l: '누적 지출', v: ytd.totalExpense, t: '' },
+            { l: '누적 영업이익', v: ytd.profit, t: ytd.profit < 0 ? 'text-rose-600' : '' },
+            { l: '누적 부가세', v: ytd.vatTotal, t: '' },
+          ].map((c, i) => (
+            <div key={i} className="px-3 py-2.5">
+              <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-slate-400">{c.l}</div>
+              <div className={`mt-1 text-[15px] font-bold tabular-nums leading-none ${c.t}`}>{formatWon(c.v)}</div>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -203,11 +225,10 @@ export default async function BusinessDashboard({ userId, month }: { userId: num
       </section>
 
       {/* 지출 구조 */}
+      {expBreakdown.length > 0 && (
       <section className="card p-5">
         <h2 className="font-semibold mb-3">{month} 지출 구조</h2>
-        {expBreakdown.length === 0 ? (
-          <p className="text-sm text-slate-500 py-6 text-center">사업 지출이 없습니다.</p>
-        ) : (
+        {(
           <div className="space-y-2.5">
             {expBreakdown.map((x, i) => (
               <div key={i}>
@@ -229,6 +250,7 @@ export default async function BusinessDashboard({ userId, month }: { userId: num
           </div>
         )}
       </section>
+      )}
 
       {/* 현금 흐름 */}
       <section className="card p-5">
@@ -237,31 +259,6 @@ export default async function BusinessDashboard({ userId, month }: { userId: num
           <span className="text-xs text-slate-500 tabular-nums">월평균 순익 {formatWon(avgMonthlyNet)}</span>
         </div>
         <CashFlowBars data={cashFlow} />
-      </section>
-
-      {/* YTD 누적 */}
-      <section>
-        <h2 className="font-semibold mb-3">{year} 누적 (YTD)</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="card p-4">
-            <div className="label">누적 매출</div>
-            <div className="text-xl font-semibold mt-1 tabular-nums text-amber-600">{formatWon(ytd.revenue)}</div>
-          </div>
-          <div className="card p-4">
-            <div className="label">누적 지출</div>
-            <div className="text-xl font-semibold mt-1 tabular-nums">{formatWon(ytd.totalExpense)}</div>
-          </div>
-          <div className="card p-4">
-            <div className="label">누적 영업이익</div>
-            <div className={`text-xl font-semibold mt-1 tabular-nums ${ytd.profit < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-              {formatWon(ytd.profit)}
-            </div>
-          </div>
-          <div className="card p-4">
-            <div className="label">누적 부가세</div>
-            <div className="text-xl font-semibold mt-1 tabular-nums text-indigo-600">{formatWon(ytd.vatTotal)}</div>
-          </div>
-        </div>
       </section>
 
       {/* 목표 대비 */}
@@ -328,14 +325,13 @@ export default async function BusinessDashboard({ userId, month }: { userId: num
       </section>
 
       {/* 최근 매출 */}
+      {recent.length > 0 && (
       <section className="card p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold">최근 매출</h2>
           <Link href="/sales" className="text-xs text-slate-500 hover:text-slate-900">전체보기 →</Link>
         </div>
-        {recent.length === 0 ? (
-          <p className="text-sm text-slate-500 py-6 text-center">매출 내역이 없습니다.</p>
-        ) : (
+        {(
           <table className="pretty">
             <thead>
               <tr><th>날짜</th><th>카테고리</th><th>거래처</th><th>메모</th><th className="text-right">공급가액</th><th className="text-right">부가세</th><th className="text-right">합계</th></tr>
@@ -356,6 +352,7 @@ export default async function BusinessDashboard({ userId, month }: { userId: num
           </table>
         )}
       </section>
+      )}
     </div>
   );
 }

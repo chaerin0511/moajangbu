@@ -4,6 +4,7 @@ import { getInvestment, listInvestmentTrades } from '@/lib/queries';
 import { addInvestmentTrade, deleteInvestmentTrade } from '@/lib/actions';
 import { formatWon, todayISO } from '@/lib/utils';
 import { currentUserId } from '@/lib/auth-helper';
+import ConfirmButton from '@/components/ConfirmButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -118,7 +119,7 @@ export default async function Page({ params }: { params: { id: string } }) {
                     <form action={deleteInvestmentTrade} className="inline">
                       <input type="hidden" name="id" value={t.id} />
                       <input type="hidden" name="investment_id" value={inv.id} />
-                      <button className="text-xs text-rose-600">삭제</button>
+                      <ConfirmButton message="이 거래를 삭제할까요?" className="text-xs text-rose-600">삭제</ConfirmButton>
                     </form>
                   </td>
                 </tr>

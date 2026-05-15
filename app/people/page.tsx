@@ -3,6 +3,7 @@ import { createPerson, deletePerson } from '@/lib/actions';
 import { currentMonth, formatWon } from '@/lib/utils';
 import { currentUserId } from '@/lib/auth-helper';
 import MonthPicker from '@/components/MonthPicker';
+import ConfirmButton from '@/components/ConfirmButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,7 +60,7 @@ export default async function Page({ searchParams }: { searchParams: Record<stri
                 <td className="text-right">
                   <form action={deletePerson}>
                     <input type="hidden" name="id" value={s.person.id} />
-                    <button className="btn-danger">삭제</button>
+                    <ConfirmButton message={`"${s.person.name}"을(를) 삭제할까요? 연결된 거래의 사람 정보가 비워집니다.`} className="btn-danger">삭제</ConfirmButton>
                   </form>
                 </td>
               </tr>

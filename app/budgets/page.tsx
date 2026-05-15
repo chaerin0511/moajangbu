@@ -5,6 +5,7 @@ import BudgetForm from '@/components/BudgetForm';
 import { currentUserId } from '@/lib/auth-helper';
 import { getViewMode } from '@/lib/view-mode';
 import MonthPicker from '@/components/MonthPicker';
+import ConfirmButton from '@/components/ConfirmButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,7 +53,7 @@ export default async function Page({ searchParams }: { searchParams: Record<stri
                   <td className="text-right">
                     <form action={deleteBudget}>
                       <input type="hidden" name="id" value={b.id} />
-                      <button className="btn-danger px-2 py-1 text-xs">삭제</button>
+                      <ConfirmButton message="이 예산을 삭제할까요?" className="btn-danger px-2 py-1 text-xs">삭제</ConfirmButton>
                     </form>
                   </td>
                 </tr>

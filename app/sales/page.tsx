@@ -5,6 +5,7 @@ import { currentUserId } from '@/lib/auth-helper';
 import { getViewMode } from '@/lib/view-mode';
 import Link from 'next/link';
 import MonthPicker from '@/components/MonthPicker';
+import ConfirmButton from '@/components/ConfirmButton';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '사업자 매출' };
@@ -226,7 +227,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Record
                     <td className="text-right">
                       <form action={deleteTransaction}>
                         <input type="hidden" name="id" value={t.id} />
-                        <button className="btn-danger">삭제</button>
+                        <ConfirmButton message="이 매출을 삭제할까요?" className="btn-danger">삭제</ConfirmButton>
                       </form>
                     </td>
                   </tr>

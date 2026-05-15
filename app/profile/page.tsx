@@ -2,6 +2,7 @@ import { ensureDb } from '@/lib/db';
 import { currentUserId } from '@/lib/auth-helper';
 import { updateProfileName, deleteAccount } from '@/lib/actions';
 import { formatWon } from '@/lib/utils';
+import ConfirmButton from '@/components/ConfirmButton';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '프로필' };
@@ -76,13 +77,12 @@ export default async function ProfilePage() {
           카카오와의 연결도 끊깁니다(다시 로그인하면 새 계정처럼 시작).
         </p>
         <form action={deleteAccount}>
-          <button
+          <ConfirmButton
+            message="정말 회원 탈퇴하시겠습니까? 모든 거래·대출·예산·카테고리 데이터가 즉시 삭제되며 복구할 수 없습니다."
             className="btn-danger"
-            type="submit"
-            // server actions don't support confirm natively; using a name-confirm pattern below would require client component. Keep simple here.
           >
             회원 탈퇴 (모든 데이터 삭제)
-          </button>
+          </ConfirmButton>
         </form>
         <p className="text-xs text-rose-500 mt-2">이 버튼은 누르면 즉시 실행됩니다. 신중히.</p>
       </section>

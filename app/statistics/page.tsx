@@ -4,6 +4,7 @@ import { formatWon } from '@/lib/utils';
 import Link from 'next/link';
 import { currentUserId } from '@/lib/auth-helper';
 import { getViewMode } from '@/lib/view-mode';
+import ConfirmButton from '@/components/ConfirmButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -113,7 +114,7 @@ export default async function Page({ searchParams }: { searchParams: Record<stri
                 <td className="text-right">
                   <form action={deleteTransaction}>
                     <input type="hidden" name="id" value={t.id} />
-                    <button className="btn-danger">삭제</button>
+                    <ConfirmButton message="이 거래를 삭제할까요?" className="btn-danger">삭제</ConfirmButton>
                   </form>
                 </td>
               </tr>

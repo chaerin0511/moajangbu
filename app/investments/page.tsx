@@ -4,6 +4,7 @@ import { createInvestment, updateInvestmentPrice, deleteInvestment, toggleInvest
 import { INVESTMENT_TYPES } from '@/lib/db';
 import { formatWon } from '@/lib/utils';
 import { currentUserId } from '@/lib/auth-helper';
+import ConfirmButton from '@/components/ConfirmButton';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '투자' };
@@ -126,7 +127,7 @@ export default async function Page() {
                     </form>
                     <form action={deleteInvestment} className="inline">
                       <input type="hidden" name="id" value={r.id} />
-                      <button className="text-xs text-rose-600">삭제</button>
+                      <ConfirmButton message={`종목 "${r.name}"을(를) 삭제할까요? 거래 내역도 함께 삭제됩니다.`} className="text-xs text-rose-600">삭제</ConfirmButton>
                     </form>
                   </td>
                 </tr>

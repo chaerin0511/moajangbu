@@ -620,17 +620,17 @@ export async function accrueDebtInterest(userId: number, asOf?: string): Promise
   const tx = await db.transaction('write');
   try {
     for (const d of debts) {
-      const histR = await tx.execute({ sql: 'SELECT effective_date, rate FROM debt_rate_history WHERE debt_id=? ORDER BY effective_date', args: [d.id] });
+      const histR = await tx.execute({ sql: 'SELECT effective_date, rate FROM debt_rate_history WHERE debt_id=? AND user_id=? ORDER BY effective_date', args: [d.id, userId] });
       const history = (histR.rows as any[]).map(h => ({ effective_date: h.effective_date, rate: typeof h.rate === 'bigint' ? Number(h.rate) : h.rate }));
       const startFrom = d.last_accrual_date || d.start_date;
       const startD = new Date(startFrom);
       const todayD = new Date(today);
       let cursor = new Date(startD.getFullYear(), startD.getMonth() + 1, 1);
-      const paidPrincipalR = await tx.execute({ sql: `SELECT COALESCE(SUM(principal_amount),0) AS p FROM transactions WHERE debt_id=? AND date <= ?`, args: [d.id, today] });
+      const paidPrincipalR = await tx.execute({ sql: `SELECT COALESCE(SUM(principal_amount),0) AS p FROM transactions WHERE debt_id=? AND user_id=? AND date <= ?`, args: [d.id, userId, today] });
       let monthly = 0;
       while (cursor <= todayD) {
         const cursorISO = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}-01`;
-        const paidByThenR = await tx.execute({ sql: `SELECT COALESCE(SUM(principal_amount),0) AS p FROM transactions WHERE debt_id=? AND date < ?`, args: [d.id, cursorISO] });
+        const paidByThenR = await tx.execute({ sql: `SELECT COALESCE(SUM(principal_amount),0) AS p FROM transactions WHERE debt_id=? AND user_id=? AND date < ?`, args: [d.id, userId, cursorISO] });
         const paidByThen = N((paidByThenR.rows[0] as any).p);
         const remaining = Math.max(0, d.initial_principal - paidByThen);
         if (remaining <= 0) break;
@@ -770,7 +770,7 @@ export async function debtSummary(userId: number, month: string): Promise<DebtSu
   const totalRemR = await db.execute({
     sql: `SELECT COALESCE(SUM(d.initial_principal),0) - COALESCE(SUM(t.principal_amount),0) AS rem
      FROM debts d
-     LEFT JOIN transactions t ON t.debt_id = d.id
+     LEFT JOIN transactions t ON t.debt_id = d.id AND t.user_id = d.user_id
      WHERE d.active = 1 AND d.user_id = ?`,
     args: [userId],
   });
