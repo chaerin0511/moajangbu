@@ -11,9 +11,9 @@
   --text-muted:    #6b7684;
   --text-faint:    #b0b8c1;
 
-  --primary:       #4a7c5f;     /* Calm sage green */
-  --primary-hover: #3a6249;
-  --primary-soft:  #eef3ef;
+  --primary:       #2c9a6a;     /* Fresh calm emerald */
+  --primary-hover: #1f7a52;
+  --primary-soft:  #ebf5ef;
 
   --income:        #3182f6;     /* blue for income */
   --income-soft:   #e8f2ff;
@@ -137,7 +137,7 @@ a.btn-primary, a.btn-ghost, a.btn-danger { text-decoration: none; }
 }
 
 .nav-active {
-  background: var(--text);
+  background: var(--primary);
   color: #fff;
 }
 

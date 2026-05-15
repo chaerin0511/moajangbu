@@ -3,8 +3,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import type { ViewMode } from '@/lib/view-mode';
 
-const MINT = '#4a7c5f';
-const MINT_DARK = '#3a6249';
+const MINT = '#2c9a6a';
+const MINT_DARK = '#1f7a52';
 
 const MODES: { value: ViewMode; title: string; desc: string }[] = [
   { value: 'personal', title: '개인',  desc: '가계부·고정지출·비상금' },

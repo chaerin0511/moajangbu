@@ -18,43 +18,27 @@ function pct(n: number): string {
   return `${(n * 100).toFixed(0)}%`;
 }
 
-function StatCard({ label, value, sub, tone = 'slate' }: { label: string; value: string; sub?: string; tone?: 'emerald' | 'rose' | 'amber' | 'slate' | 'indigo' }) {
-  const tones: Record<string, string> = {
-    emerald: 'text-emerald-600',
-    rose: 'text-rose-600',
-    amber: 'text-amber-600',
-    slate: 'text-slate-900',
-    indigo: 'text-indigo-600',
-  };
-  return (
-    <div className="card p-4">
-      <div className="label">{label}</div>
-      <div className={`text-2xl font-semibold mt-1 ${tones[tone]} tabular-nums`}>{value}</div>
-      {sub && <div className="text-xs text-slate-500 mt-1">{sub}</div>}
-    </div>
-  );
-}
-
 function HealthHero({ month, rate, net, vsLastMonth }: { month: string; rate: number; net: number; vsLastMonth: number }) {
   const tier =
-    rate >= 0.2 ? { label: '건강', color: 'text-emerald-600', sub: '저축률이 안전 구간입니다.' } :
-    rate >= 0.05 ? { label: '보통', color: 'text-amber-600', sub: '저축 여력은 있지만 빠듯합니다.' } :
-    rate >= 0 ? { label: '주의', color: 'text-rose-500', sub: '거의 남지 않습니다. 변동 소비를 점검하세요.' } :
-    { label: '위험', color: 'text-rose-600', sub: '이번 달 적자입니다.' };
+    rate >= 0.2 ? { label: '건강', chip: 'bg-emerald-50 text-emerald-700' } :
+    rate >= 0.05 ? { label: '보통', chip: 'bg-amber-50 text-amber-700' } :
+    rate >= 0 ? { label: '주의', chip: 'bg-rose-50 text-rose-600' } :
+    { label: '위험', chip: 'bg-rose-100 text-rose-700' };
 
   return (
     <section className="card p-5 sm:p-6">
       <div className="flex items-start justify-between gap-4 flex-col sm:flex-row">
         <div className="min-w-0">
-          <div className="label">{month}</div>
-          <div className="flex items-baseline gap-3 mt-2 flex-wrap">
-            <span className={`text-2xl font-semibold ${tier.color}`}>{tier.label}</span>
-            <span className="text-sm text-slate-500">저축률 <b className="text-slate-900 tabular-nums">{pct(rate)}</b></span>
+          <div className="flex items-center gap-2">
+            <span className="label">{month} 남는 돈</span>
+            <span className={`chip ${tier.chip}`}>{tier.label}</span>
           </div>
-          <div className="text-sm text-slate-500 mt-1">{tier.sub}</div>
-          <div className="text-sm text-slate-700 mt-3">
-            남는 돈 <b className="tabular-nums">{formatWon(net)}</b>
-            <span className="ml-3 text-slate-500">전월 대비 <span className={vsLastMonth >= 0 ? 'text-emerald-600' : 'text-rose-500'}>{vsLastMonth >= 0 ? '+' : ''}{formatWon(vsLastMonth)}</span></span>
+          <div className={`mt-2 text-[34px] sm:text-[40px] font-bold tabular-nums leading-none ${net >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+            {formatWon(net)}
+          </div>
+          <div className="text-sm text-slate-500 mt-3">
+            저축률 <b className="text-slate-700 tabular-nums">{pct(rate)}</b>
+            <span className="ml-3">전월 대비 <span className={vsLastMonth >= 0 ? 'text-emerald-600' : 'text-rose-500'}>{vsLastMonth >= 0 ? '+' : ''}{formatWon(vsLastMonth)}</span></span>
           </div>
         </div>
         <div className="flex gap-2 w-full sm:w-auto shrink-0">
@@ -146,32 +130,110 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
         <HealthHero month={month} rate={h.savingsRate} net={h.net} vsLastMonth={h.vsLastMonth.net} />
       )}
 
-      {/* 잔액 */}
-      <section>
-        <h2 className="font-semibold mb-3">계좌 잔액</h2>
-        <div className="grid md:grid-cols-2 gap-3">
+      {/* 종합 카드 — 세련 버전 */}
+      <section className="rounded-2xl bg-white border border-slate-100 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
+        {/* 잔액 — 카드 2개 분리, 각자 그린 테두리 */}
+        <div className="grid sm:grid-cols-2 gap-2 p-2">
           {[
-            { key: 'personal', label: '개인', bal: balPersonal, proj: projPersonal, tone: 'bg-indigo-100 text-indigo-700' },
-            { key: 'business', label: '사업자', bal: balBusiness, proj: projBusiness, tone: 'bg-amber-100 text-amber-700' },
+            { key: 'personal', label: '개인',  bal: balPersonal, proj: projPersonal, accent: '#6366f1' },
+            { key: 'business', label: '사업자', bal: balBusiness, proj: projBusiness, accent: '#f59e0b' },
           ].filter(a => view === 'all' || a.key === view).map(a => {
             const diff = a.proj - a.bal;
             return (
-              <div key={a.key} className="card p-5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`chip ${a.tone}`}>{a.label}</span>
-                  <Link href="/settings" className="text-xs text-slate-400 hover:text-slate-700">시작잔액 설정</Link>
+              <div
+                key={a.key}
+                className="rounded-xl bg-white px-4 py-3.5"
+                style={{ border: '1.5px solid var(--primary)' }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-1 h-3 rounded-sm" style={{ background: a.accent }} />
+                  <span className="text-[11px] uppercase tracking-[0.08em] font-semibold text-slate-400">{a.label}</span>
                 </div>
-                <div className={`text-3xl font-bold tabular-nums ${a.bal >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                <div className={`mt-2 text-[24px] font-bold tabular-nums leading-none tracking-tight ${a.bal >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
                   {formatWon(a.bal)}
                 </div>
-                <div className="text-xs text-slate-500 mt-2 tabular-nums">
-                  월말 예상 <span className={a.proj < 0 ? 'text-rose-600 font-medium' : 'text-slate-700 font-medium'}>{formatWon(a.proj)}</span>
-                  {diff !== 0 && <span className={`ml-2 ${diff < 0 ? 'text-rose-500' : 'text-emerald-600'}`}>({diff > 0 ? '+' : ''}{formatWon(diff)})</span>}
+                <div className="mt-2.5 flex items-center gap-1.5 text-[11px] tabular-nums">
+                  <span className="text-slate-400">월말</span>
+                  <span className={a.proj < 0 ? 'text-rose-600 font-medium' : 'text-slate-700 font-medium'}>{formatWon(a.proj)}</span>
+                  {diff !== 0 && (
+                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-medium ${
+                      diff < 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-700'
+                    }`}>
+                      {diff > 0 ? '+' : ''}{formatWon(diff)}
+                    </span>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
+
+        {/* 보조 지표 띠 */}
+        <div className="grid grid-cols-2 border-t border-slate-100 bg-slate-50/50">
+          {viewMode !== 'business' ? (
+            <div className="px-5 py-3.5 border-r border-slate-100">
+              <div className="flex items-baseline justify-between">
+                <span className="text-[11px] uppercase tracking-[0.08em] font-semibold text-slate-400">비상금</span>
+                <span className="text-[11px] text-slate-500 tabular-nums">
+                  <b className="text-slate-800 font-bold">{ef.months.toFixed(1)}</b>
+                  <span className="text-slate-400"> / 6달</span>
+                </span>
+              </div>
+              <div className="w-full h-1 bg-white rounded-full mt-2.5 overflow-hidden">
+                <div className="h-full rounded-full"
+                  style={{
+                    width: `${Math.min(100, (ef.months / 6) * 100)}%`,
+                    background: ef.months >= 6 ? 'var(--primary)' : ef.months >= 3 ? '#f59e0b' : '#f43f5e',
+                  }} />
+              </div>
+            </div>
+          ) : <div className="border-r border-slate-100" />}
+          <div className="px-5 py-3.5">
+            <div className="flex items-baseline justify-between">
+              <span className="text-[11px] uppercase tracking-[0.08em] font-semibold text-slate-400">{new Date().getFullYear()} 누적 저축</span>
+              <span className={`text-[11px] tabular-nums font-medium ${ytd.net < 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
+                {ytd.net >= 0 ? '+' : ''}{formatWon(ytd.net)}
+              </span>
+            </div>
+            <div className="mt-1.5 text-[10px] text-slate-400 tabular-nums">
+              수입 {formatWon(ytd.income)} · 지출 {formatWon(ytd.expense)}
+            </div>
+          </div>
+        </div>
+
+        {/* 고정지출 */}
+        {(() => {
+          const fixedView = view === 'all' ? fixedBreakdown : fixedBreakdown.filter(x => x.ledger === view);
+          const total = fixedView.reduce((s, x) => s + x.amount, 0);
+          return (
+            <div className="px-5 py-3.5 border-t border-slate-100">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-[11px] uppercase tracking-[0.08em] font-semibold text-slate-400">{month} 고정지출</span>
+                {fixedView.length > 0
+                  ? <span className="text-[12px] tabular-nums font-semibold text-slate-800">{formatWon(total)}</span>
+                  : <span className="text-[11px] text-slate-400">없음</span>}
+              </div>
+              {fixedView.length > 0 && (
+                <div className="space-y-1.5">
+                  {fixedView.map((x, i) => {
+                    const share = total > 0 ? (x.amount / total) * 100 : 0;
+                    return (
+                      <div key={i} className="flex items-center gap-2.5 text-[12px]">
+                        <span className="w-1 h-1 rounded-full shrink-0" style={{ background: x.ledger === 'personal' ? '#6366f1' : '#f59e0b' }} />
+                        <span className="truncate text-slate-700">{x.category_name || '(미지정)'}</span>
+                        <div className="flex-1 h-[2px] bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full bg-slate-300" style={{ width: `${share}%` }} />
+                        </div>
+                        <span className="tabular-nums text-slate-700 font-medium shrink-0">{formatWon(x.amount)}</span>
+                        <span className="text-[10px] text-slate-400 tabular-nums shrink-0 w-8 text-right">{share.toFixed(0)}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </section>
 
       {/* 사업자 세금 충당금 */}
@@ -236,42 +298,6 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
         </section>
       )}
 
-      {/* 비상금 & 연간 누적 */}
-      <section>
-        <div className="grid md:grid-cols-2 gap-3">
-          {viewMode !== 'business' && (
-          <div className="card p-5">
-            <div className="flex items-center justify-between">
-              <h3>비상금</h3>
-              <span className="text-xs text-slate-500">개인 고정지출 기준</span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums mt-2">
-              {ef.months.toFixed(1)}<span className="text-base text-slate-500 ml-1">개월치</span>
-            </div>
-            <div className="w-full h-2 bg-slate-100 rounded-full mt-2 overflow-hidden">
-              <div className={`h-full ${ef.months >= 6 ? 'bg-emerald-500' : ef.months >= 3 ? 'bg-amber-500' : 'bg-rose-500'}`}
-                   style={{ width: `${Math.min(100, (ef.months / 6) * 100)}%` }} />
-            </div>
-            <div className="text-xs text-slate-500 mt-2">
-              월평균 고정지출 {formatWon(Math.round(ef.monthlyFixed))} · 권장 6개월
-            </div>
-          </div>
-          )}
-          <div className="card p-5">
-            <div className="flex items-center justify-between">
-              <h3>{new Date().getFullYear()}년 누적 저축</h3>
-              <span className="text-xs text-slate-500">YTD</span>
-            </div>
-            <div className={`text-2xl font-bold tabular-nums mt-2 ${ytd.net < 0 ? 'text-rose-600' : ''}`}>
-              {formatWon(ytd.net)}
-            </div>
-            <div className="text-xs text-slate-500 mt-2 tabular-nums">
-              수입 {formatWon(ytd.income)} · 지출 {formatWon(ytd.expense)}
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* 이상 지출 감지 */}
       {(() => {
         const anomaliesView = view === 'all' ? anomalies : anomalies.filter(a => a.ledger === view);
@@ -301,110 +327,83 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
         );
       })()}
 
-      {/* 고정지출 분해 */}
+      {/* 판단 지표 — 압축 + 시각화 */}
       {(() => {
-        const fixedView = view === 'all' ? fixedBreakdown : fixedBreakdown.filter(x => x.ledger === view);
+        const savColor = h.savingsRate >= 0.2 ? 'var(--primary)' : h.savingsRate >= 0.05 ? '#f59e0b' : '#f43f5e';
+        const covColor = h.fixedCoverage >= 1 ? 'var(--primary)' : h.fixedCoverage >= 0.7 ? '#f59e0b' : '#f43f5e';
+        const savPct = Math.max(0, Math.min(100, h.savingsRate * 100));
+        const covPct = Math.max(0, Math.min(100, (Number.isFinite(h.fixedCoverage) ? h.fixedCoverage : 0) * 100));
+        const upNet = h.vsLastMonth.net >= 0;
         return (
-      <section className="card p-5">
-        <h2 className="font-semibold mb-3">{month} 고정지출 분해</h2>
-        {fixedView.length === 0 ? (
-          <p className="text-sm text-slate-500 py-6 text-center">고정지출이 없습니다.</p>
-        ) : (() => {
-          const total = fixedView.reduce((s, x) => s + x.amount, 0);
-          return (
-            <>
-              {/* 모바일 카드 */}
-              <div className="sm:hidden space-y-2">
-                {fixedView.map((x, i) => {
-                  const share = total > 0 ? (x.amount / total) * 100 : 0;
-                  return (
-                    <div key={i} className="rounded-xl bg-slate-50 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={`chip shrink-0 ${x.ledger === 'personal' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {x.ledger === 'personal' ? '개인' : '사업자'}
-                          </span>
-                          <span className="truncate text-sm">{x.category_name || '(미지정)'}</span>
-                        </div>
-                        <span className="text-sm font-medium tabular-nums shrink-0">{formatWon(x.amount)}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs text-slate-500 mt-1.5 tabular-nums">
-                        <span>{x.count}건</span>
-                        <span>{share.toFixed(0)}%</span>
-                      </div>
-                    </div>
-                  );
-                })}
-                <div className="flex items-center justify-between pt-2 px-1 text-sm font-semibold">
-                  <span>합계</span>
-                  <span className="tabular-nums">{formatWon(total)}</span>
-                </div>
+        <section className="rounded-xl bg-white border border-slate-200 overflow-hidden text-[12px]">
+          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="text-[13px] font-semibold">{month} 판단 지표</h2>
+            <span className="text-[10px] text-slate-400">한 달 요약</span>
+          </div>
+
+          <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+            {/* 저축률 */}
+            <div className="px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-500">저축률</span>
+                <span className="text-[10px] text-slate-400 tabular-nums">목표 20%</span>
               </div>
-              {/* 데스크탑 테이블 */}
-              <table className="pretty hidden sm:table">
-                <thead>
-                  <tr>
-                    <th>장부</th><th>카테고리</th><th className="text-right">건수</th><th className="text-right">금액</th><th className="text-right">비중</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {fixedView.map((x, i) => (
-                    <tr key={i}>
-                      <td>
-                        <span className={`chip ${x.ledger === 'personal' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {x.ledger === 'personal' ? '개인' : '사업자'}
-                        </span>
-                      </td>
-                      <td>{x.category_name || '(미지정)'}</td>
-                      <td className="text-right tabular-nums">{x.count}</td>
-                      <td className="text-right tabular-nums font-medium">{formatWon(x.amount)}</td>
-                      <td className="text-right tabular-nums text-slate-500">{total > 0 ? `${((x.amount / total) * 100).toFixed(0)}%` : '-'}</td>
-                    </tr>
-                  ))}
-                  <tr>
-                    <td colSpan={3} className="text-right font-semibold">합계</td>
-                    <td className="text-right tabular-nums font-semibold">{formatWon(total)}</td>
-                    <td></td>
-                  </tr>
-                </tbody>
-              </table>
-            </>
-          );
-        })()}
-      </section>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-[22px] font-bold tabular-nums leading-none" style={{ color: savColor }}>{pct(h.savingsRate)}</span>
+                <span className="text-[10px] text-slate-400 tabular-nums">+{formatWon(h.income)} / -{formatWon(h.expense)}</span>
+              </div>
+              <div className="w-full h-1 bg-slate-100 rounded-full mt-2 overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${savPct}%`, background: savColor }} />
+              </div>
+            </div>
+
+            {/* 고정비 커버리지 */}
+            <div className="px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-500">고정비 커버리지</span>
+                <span className="text-[10px] text-slate-400 tabular-nums">목표 100%</span>
+              </div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-[22px] font-bold tabular-nums leading-none" style={{ color: covColor }}>
+                  {Number.isFinite(h.fixedCoverage) ? pct(h.fixedCoverage) : '—'}
+                </span>
+                <span className="text-[10px] text-slate-400 tabular-nums">{formatWon(h.fixedIncome)} / {formatWon(h.fixedExpense)}</span>
+              </div>
+              <div className="w-full h-1 bg-slate-100 rounded-full mt-2 overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${Math.min(100, covPct)}%`, background: covColor }} />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 border-t border-slate-100">
+            {/* 순수 소비 */}
+            <div className="px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-500">순수 소비 (변동)</span>
+                <span className="text-[10px] text-slate-400 tabular-nums">개인 수입의 {pct(h.pureSpendShare)}</span>
+              </div>
+              <div className="mt-1 text-[20px] font-bold tabular-nums leading-none">{formatWon(h.pureSpend)}</div>
+            </div>
+
+            {/* 전월 대비 */}
+            <div className="px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-500">전월 대비 순익</span>
+                <span className={`text-[10px] tabular-nums ${upNet ? 'text-emerald-600' : 'text-rose-500'}`}>
+                  {upNet ? '▲' : '▼'}
+                </span>
+              </div>
+              <div className={`mt-1 text-[20px] font-bold tabular-nums leading-none ${upNet ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {upNet ? '+' : ''}{formatWon(h.vsLastMonth.net)}
+              </div>
+              <div className="mt-1.5 text-[10px] text-slate-400 tabular-nums">
+                수입 {h.vsLastMonth.income >= 0 ? '+' : ''}{formatWon(h.vsLastMonth.income)} · 지출 {h.vsLastMonth.expense >= 0 ? '+' : ''}{formatWon(h.vsLastMonth.expense)}
+              </div>
+            </div>
+          </div>
+        </section>
         );
       })()}
-
-      {/* 4지표 */}
-      <section>
-        <h2 className="font-semibold mb-3">{month} 판단 지표</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard
-            label="저축률"
-            value={pct(h.savingsRate)}
-            tone={h.savingsRate >= 0.2 ? 'emerald' : h.savingsRate >= 0.05 ? 'amber' : 'rose'}
-            sub={`수입 ${formatWon(h.income)} · 지출 ${formatWon(h.expense)}`}
-          />
-          <StatCard
-            label="고정비 커버리지"
-            value={Number.isFinite(h.fixedCoverage) ? pct(h.fixedCoverage) : '—'}
-            tone={h.fixedCoverage >= 1 ? 'emerald' : h.fixedCoverage >= 0.7 ? 'amber' : 'rose'}
-            sub={`고정수입 ${formatWon(h.fixedIncome)} / 고정지출 ${formatWon(h.fixedExpense)}`}
-          />
-          <StatCard
-            label="순수 소비 (변동)"
-            value={formatWon(h.pureSpend)}
-            tone="indigo"
-            sub={`개인 수입의 ${pct(h.pureSpendShare)}`}
-          />
-          <StatCard
-            label="전월 대비 순익"
-            value={(h.vsLastMonth.net >= 0 ? '+' : '') + formatWon(h.vsLastMonth.net)}
-            tone={h.vsLastMonth.net >= 0 ? 'emerald' : 'rose'}
-            sub={`수입 ${h.vsLastMonth.income >= 0 ? '+' : ''}${formatWon(h.vsLastMonth.income)} · 지출 ${h.vsLastMonth.expense >= 0 ? '+' : ''}${formatWon(h.vsLastMonth.expense)}`}
-          />
-        </div>
-      </section>
 
       {/* 저축률 추세 */}
       <section className="card p-5">
@@ -412,89 +411,106 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
         <SavingsRateChart data={series} />
       </section>
 
-      {/* 장부 요약 */}
+      {/* 장부 요약 — 압축 */}
       <section>
-        <h2 className="font-semibold mb-3">장부별 요약</h2>
-        <div className="grid md:grid-cols-2 gap-3">
-          {viewMode !== 'business' && (
-          <div className="card p-4">
-            <div className="flex items-center gap-2 mb-2"><span className="chip bg-indigo-100 text-indigo-700">개인</span></div>
-            <div className="grid grid-cols-3 gap-2 text-sm">
-              <div><div className="label">수입</div><div className="font-semibold tabular-nums text-slate-900">{formatWon(t.personal.income)}</div></div>
-              <div><div className="label">지출</div><div className="font-semibold tabular-nums text-slate-900">{formatWon(t.personal.expense)}</div></div>
-              <div><div className="label">순익</div><div className={`font-semibold tabular-nums ${t.personal.net < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatWon(t.personal.net)}</div></div>
-            </div>
-          </div>
-          )}
-          {view !== 'personal' && (
-          <div className="card p-4">
-            <div className="flex items-center gap-2 mb-2"><span className="chip bg-amber-100 text-amber-700">사업자</span></div>
-            <div className="grid grid-cols-3 gap-2 text-sm">
-              <div><div className="label">수입</div><div className="font-semibold tabular-nums text-slate-900">{formatWon(t.business.income)}</div></div>
-              <div><div className="label">지출</div><div className="font-semibold tabular-nums text-slate-900">{formatWon(t.business.expense)}</div></div>
-              <div><div className="label">순익</div><div className={`font-semibold tabular-nums ${t.business.net < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatWon(t.business.net)}</div></div>
-            </div>
-          </div>
-          )}
+        <h2 className="text-[13px] font-semibold text-slate-700 mb-2">장부별 요약</h2>
+        <div className="grid md:grid-cols-2 gap-2">
+          {([
+            viewMode !== 'business' && { key: 'personal' as const, label: '개인',  data: t.personal, accent: '#6366f1' },
+            view !== 'personal'     && { key: 'business' as const, label: '사업자', data: t.business, accent: '#f59e0b' },
+          ].filter(Boolean) as { key: string; label: string; data: { income: number; expense: number; net: number }; accent: string }[]).map(a => {
+            const total = a.data.income + a.data.expense;
+            const incPct = total > 0 ? (a.data.income / total) * 100 : 0;
+            const expPct = total > 0 ? (a.data.expense / total) * 100 : 0;
+            const isProfit = a.data.net >= 0;
+            return (
+              <div key={a.key} className="rounded-xl bg-white border border-slate-100 px-3.5 py-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-block w-1 h-3 rounded-sm" style={{ background: a.accent }} />
+                    <span className="text-[11px] uppercase tracking-[0.08em] font-semibold text-slate-400">{a.label}</span>
+                  </div>
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${isProfit ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
+                    {isProfit ? '흑자' : '적자'}
+                  </span>
+                </div>
+
+                <div className={`mt-1.5 text-[18px] font-bold tabular-nums leading-none ${isProfit ? 'text-slate-900' : 'text-rose-600'}`}>
+                  {isProfit ? '+' : ''}{formatWon(a.data.net)}
+                </div>
+
+                <div className="mt-2.5 flex h-1.5 rounded-full overflow-hidden bg-slate-100">
+                  {total > 0 ? (
+                    <>
+                      <div className="h-full bg-emerald-500" style={{ width: `${incPct}%` }} />
+                      <div className="h-full bg-rose-400" style={{ width: `${expPct}%` }} />
+                    </>
+                  ) : null}
+                </div>
+                <div className="mt-1.5 flex items-center justify-between text-[10px] tabular-nums">
+                  <span className="text-slate-500">수입 <b className="text-slate-800 font-semibold">{formatWon(a.data.income)}</b></span>
+                  <span className="text-slate-500">지출 <b className="text-slate-800 font-semibold">{formatWon(a.data.expense)}</b></span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
 
       {/* 예산 */}
-      <section className="card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">이번 달 예산</h2>
-          <Link href="/budgets" className="text-xs text-slate-500 hover:text-slate-900">관리 →</Link>
-        </div>
-        {(() => {
-          const budgetsView = view === 'all' ? budgets : budgets.filter(b => b.ledger === view);
-          return budgetsView.length === 0 ? (
-          <p className="text-sm text-slate-500 py-6 text-center">설정된 예산이 없습니다.</p>
-        ) : (
-          <div className="space-y-3">
-            {budgetsView.map(b => {
-              const p = b.amount > 0 ? (b.spent / b.amount) * 100 : 0;
-              const color = p > 100 ? 'bg-rose-500' : p > 80 ? 'bg-amber-500' : 'bg-emerald-500';
-              return (
-                <div key={b.id}>
-                  <div className="flex justify-between text-sm">
-                    <span>
-                      <span className={`chip mr-2 ${b.ledger === 'personal' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {b.ledger === 'personal' ? '개인' : '사업자'}
+      {(() => {
+        const budgetsView = view === 'all' ? budgets : budgets.filter(b => b.ledger === view);
+        if (budgetsView.length === 0) return null;
+        return (
+          <section className="card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold">이번 달 예산</h2>
+              <Link href="/budgets" className="text-xs text-slate-500 hover:text-slate-900">관리 →</Link>
+            </div>
+            <div className="space-y-3">
+              {budgetsView.map(b => {
+                const p = b.amount > 0 ? (b.spent / b.amount) * 100 : 0;
+                const color = p > 100 ? 'bg-rose-500' : p > 80 ? 'bg-amber-500' : 'bg-emerald-500';
+                return (
+                  <div key={b.id}>
+                    <div className="flex justify-between text-sm">
+                      <span>
+                        <span className={`chip mr-2 ${b.ledger === 'personal' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {b.ledger === 'personal' ? '개인' : '사업자'}
+                        </span>
+                        {b.category_name}
                       </span>
-                      {b.category_name}
-                    </span>
-                    <span className={p > 100 ? 'text-rose-600 font-semibold tabular-nums' : 'text-slate-600 tabular-nums'}>
-                      {formatWon(b.spent)} / {formatWon(b.amount)} ({p.toFixed(0)}%)
-                    </span>
+                      <span className={p > 100 ? 'text-rose-600 font-semibold tabular-nums' : 'text-slate-600 tabular-nums'}>
+                        {formatWon(b.spent)} / {formatWon(b.amount)} ({p.toFixed(0)}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-100 rounded-full mt-1.5 overflow-hidden">
+                      <div className={`h-full ${color}`} style={{ width: `${Math.min(100, p)}%` }} />
+                    </div>
                   </div>
-                  <div className="w-full h-2 bg-slate-100 rounded-full mt-1.5 overflow-hidden">
-                    <div className={`h-full ${color}`} style={{ width: `${Math.min(100, p)}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </section>
         );
-        })()}
-      </section>
+      })()}
 
       {/* 최근 거래 */}
-      <section className="card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">최근 거래</h2>
-          <Link href="/transactions" className="text-xs text-slate-500 hover:text-slate-900">전체보기 →</Link>
-        </div>
-        {(() => {
-          const recentView = view === 'all'
-            ? recent
-            : recent.filter(r =>
-                r.type === 'transfer'
-                  ? (r.from_ledger === view || r.to_ledger === view)
-                  : r.ledger === view
-              );
-          return recentView.length === 0 ? (
-          <p className="text-sm text-slate-500 py-6 text-center">거래 내역이 없습니다.</p>
-        ) : (
+      {(() => {
+        const recentView = view === 'all'
+          ? recent
+          : recent.filter(r =>
+              r.type === 'transfer'
+                ? (r.from_ledger === view || r.to_ledger === view)
+                : r.ledger === view
+            );
+        if (recentView.length === 0) return null;
+        return (
+        <section className="card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold">최근 거래</h2>
+            <Link href="/transactions" className="text-xs text-slate-500 hover:text-slate-900">전체보기 →</Link>
+          </div>
           <>
             {/* 모바일 카드 */}
             <ul className="sm:hidden divide-y divide-slate-100 -mx-1">
@@ -555,9 +571,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Record
               </tbody>
             </table>
           </>
+        </section>
         );
-        })()}
-      </section>
+      })()}
     </div>
   );
 }
