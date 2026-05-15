@@ -92,18 +92,35 @@ export async function monthlyTotals(userId: number, month: string): Promise<Mont
 
 export async function monthlySeries(userId: number): Promise<{ month: string; personalIncome: number; personalExpense: number; businessIncome: number; businessExpense: number }[]> {
   const months = monthsBack(6);
-  const out = [];
-  for (const m of months) {
-    const t = await monthlyTotals(userId, m);
-    out.push({
+  const db = await ensureDb();
+  const placeholders = months.map(() => '?').join(',');
+  const r = await db.execute({
+    sql: `SELECT substr(date,1,7) AS m,
+      SUM(CASE WHEN type='income'  AND ledger='personal' THEN amount ELSE 0 END) AS pIncome,
+      SUM(CASE WHEN type='expense' AND ledger='personal' THEN amount ELSE 0 END) AS pExpense,
+      SUM(CASE WHEN type='income'  AND ledger='business' THEN amount ELSE 0 END) AS bIncome,
+      SUM(CASE WHEN type='expense' AND ledger='business' THEN amount ELSE 0 END) AS bExpense,
+      SUM(CASE WHEN type='transfer' AND from_ledger='personal' THEN amount ELSE 0 END) AS pOut,
+      SUM(CASE WHEN type='transfer' AND to_ledger='personal'   THEN amount ELSE 0 END) AS pIn,
+      SUM(CASE WHEN type='transfer' AND from_ledger='business' THEN amount ELSE 0 END) AS bOut,
+      SUM(CASE WHEN type='transfer' AND to_ledger='business'   THEN amount ELSE 0 END) AS bIn
+     FROM transactions WHERE user_id=? AND substr(date,1,7) IN (${placeholders})
+     GROUP BY substr(date,1,7)`,
+    args: [userId, ...months],
+  });
+  const byMonth = new Map<string, any>();
+  for (const row of r.rows as any[]) byMonth.set(row.m, row);
+  return months.map(m => {
+    const row = byMonth.get(m);
+    if (!row) return { month: m, personalIncome: 0, personalExpense: 0, businessIncome: 0, businessExpense: 0 };
+    return {
       month: m,
-      personalIncome: t.personal.income,
-      personalExpense: t.personal.expense,
-      businessIncome: t.business.income,
-      businessExpense: t.business.expense,
-    });
-  }
-  return out;
+      personalIncome: N(row.pIncome) + N(row.pIn),
+      personalExpense: N(row.pExpense) + N(row.pOut),
+      businessIncome: N(row.bIncome) + N(row.bIn),
+      businessExpense: N(row.bExpense) + N(row.bOut),
+    };
+  });
 }
 
 export async function spentForBudget(userId: number, ledger: Ledger, category_id: number, month: string): Promise<number> {
@@ -119,16 +136,20 @@ export async function listBudgets(userId: number, month?: string): Promise<(Budg
   const db = await ensureDb();
   const m = month || currentMonth();
   const r = await db.execute({
-    sql: `SELECT b.*, c.name as category_name FROM budgets b JOIN categories c ON c.id=b.category_id WHERE b.user_id=? AND b.month=? ORDER BY b.ledger, c.name`,
+    sql: `SELECT b.*, c.name as category_name,
+            COALESCE((
+              SELECT SUM(t.amount) FROM transactions t
+              WHERE t.user_id = b.user_id AND t.ledger = b.ledger AND t.category_id = b.category_id
+                AND t.type = 'expense' AND substr(t.date,1,7) = b.month
+            ), 0) AS spent
+          FROM budgets b
+          JOIN categories c ON c.id = b.category_id
+          WHERE b.user_id=? AND b.month=?
+          ORDER BY b.ledger, c.name`,
     args: [userId, m],
   });
   const rows = r.rows as unknown as any[];
-  const out: (Budget & { category_name: string; spent: number })[] = [];
-  for (const row of rows) {
-    const spent = await spentForBudget(userId, row.ledger, N(row.category_id), row.month);
-    out.push({ ...row, spent });
-  }
-  return out;
+  return rows.map(row => ({ ...row, spent: N(row.spent) })) as any;
 }
 
 export async function listRecurring(userId: number): Promise<(Recurring & { category_name: string | null })[]> {
@@ -279,12 +300,25 @@ export async function financialHealth(userId: number, month: string): Promise<Fi
 
 export async function savingsRateSeries(userId: number): Promise<{ month: string; rate: number; net: number }[]> {
   const months = monthsBack(6);
-  const out = [];
-  for (const m of months) {
-    const t = await totalsFor(userId, m);
-    out.push({ month: m, rate: t.income > 0 ? t.net / t.income : 0, net: t.net });
-  }
-  return out;
+  const db = await ensureDb();
+  const placeholders = months.map(() => '?').join(',');
+  const r = await db.execute({
+    sql: `SELECT substr(date,1,7) AS m,
+      COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END),0) AS income,
+      COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense
+     FROM transactions WHERE user_id=? AND substr(date,1,7) IN (${placeholders})
+     GROUP BY substr(date,1,7)`,
+    args: [userId, ...months],
+  });
+  const byMonth = new Map<string, any>();
+  for (const row of r.rows as any[]) byMonth.set(row.m, row);
+  return months.map(m => {
+    const row = byMonth.get(m);
+    const income = row ? N(row.income) : 0;
+    const expense = row ? N(row.expense) : 0;
+    const net = income - expense;
+    return { month: m, rate: income > 0 ? net / income : 0, net };
+  });
 }
 
 /* ─────────── People (family members) ─────────── */
@@ -374,15 +408,14 @@ export async function fixedExpenseBreakdown(userId: number, month: string): Prom
 export async function emergencyFund(userId: number): Promise<{ balance: number; monthlyFixed: number; months: number }> {
   const db = await ensureDb();
   const months = monthsBack(3);
-  let total = 0;
-  for (const m of months) {
-    const r = await db.execute({
-      sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions
-       WHERE user_id=? AND ledger='personal' AND type='expense' AND recurring_id IS NOT NULL AND substr(date,1,7)=?`,
-      args: [userId, m],
-    });
-    total += N((r.rows[0] as any).s);
-  }
+  const placeholders = months.map(() => '?').join(',');
+  const r = await db.execute({
+    sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions
+     WHERE user_id=? AND ledger='personal' AND type='expense' AND recurring_id IS NOT NULL
+       AND substr(date,1,7) IN (${placeholders})`,
+    args: [userId, ...months],
+  });
+  const total = N((r.rows[0] as any).s);
   const monthlyFixed = total / Math.max(1, months.length);
   const balance = await balanceAt(userId, 'personal');
   return { balance, monthlyFixed, months: monthlyFixed > 0 ? balance / monthlyFixed : 0 };
@@ -431,17 +464,23 @@ export async function spendingAnomalies(userId: number, month: string, threshold
     args: [userId, month],
   });
   const cur = curR.rows as any[];
+  const placeholders = baselineMonths.map(() => '?').join(',');
+  const baseR = await db.execute({
+    sql: `SELECT ledger, category_id, COALESCE(SUM(amount),0) AS s FROM transactions
+     WHERE user_id=? AND type='expense' AND category_id IS NOT NULL AND substr(date,1,7) IN (${placeholders})
+     GROUP BY ledger, category_id`,
+    args: [userId, ...baselineMonths],
+  });
+  const baseMap = new Map<string, number>();
+  for (const row of baseR.rows as any[]) {
+    baseMap.set(`${row.ledger}:${N(row.category_id)}`, N(row.s));
+  }
   const out: Anomaly[] = [];
   for (const c of cur) {
     const amount = N(c.amount);
     if (amount < 10000) continue;
-    const placeholders = baselineMonths.map(() => '?').join(',');
-    const avgR = await db.execute({
-      sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions
-       WHERE user_id=? AND type='expense' AND ledger=? AND category_id=? AND substr(date,1,7) IN (${placeholders})`,
-      args: [userId, c.ledger, N(c.category_id), ...baselineMonths],
-    });
-    const average = N((avgR.rows[0] as any).s) / baselineMonths.length;
+    const baseSum = baseMap.get(`${c.ledger}:${N(c.category_id)}`) || 0;
+    const average = baseSum / baselineMonths.length;
     if (average < 10000) continue;
     const delta = (amount - average) / average;
     if (Math.abs(delta) >= thresholdPct) {
@@ -539,6 +578,13 @@ function rateAt(history: { effective_date: string; rate: number }[], baseRate: n
 export async function accrueDebtInterest(userId: number, asOf?: string): Promise<number> {
   const db = await ensureDb();
   const today = asOf || new Date().toISOString().slice(0, 10);
+  // Fast-path: if every active debt's last_accrual_date >= first-of-current-month, nothing to do.
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const pendR = await db.execute({
+    sql: `SELECT COUNT(*) AS c FROM debts WHERE user_id=? AND active=1 AND (last_accrual_date IS NULL OR last_accrual_date < ?)`,
+    args: [userId, monthStart],
+  });
+  if (N((pendR.rows[0] as any).c) === 0) return 0;
   const debtsR = await db.execute({ sql: 'SELECT * FROM debts WHERE active=1 AND user_id=?', args: [userId] });
   const debts = plain<Debt>(debtsR.rows as any[]).map(d => ({
     ...d,
@@ -604,33 +650,54 @@ export async function listDebts(userId: number): Promise<DebtRow[]> {
   const month1 = Number(today.slice(5, 7));
   const annualized = month1 > 0 ? Math.round((yIncS / month1) * 12) : 0;
 
+  // Batched per-debt aggregates: 3 queries total regardless of debt count.
+  const months = monthsBack(3);
+  const monthsPh = months.map(() => '?').join(',');
+  const aggR = await db.execute({
+    sql: `SELECT debt_id,
+       COALESCE(SUM(principal_amount),0) AS p,
+       COALESCE(SUM(interest_amount),0)  AS i,
+       MAX(date) AS lastDate
+      FROM transactions WHERE user_id=? AND debt_id IS NOT NULL
+      GROUP BY debt_id`,
+    args: [userId],
+  });
+  const aggMap = new Map<number, { p: number; i: number; lastDate: string | null }>();
+  for (const row of aggR.rows as any[]) {
+    aggMap.set(N(row.debt_id), { p: N(row.p), i: N(row.i), lastDate: row.lastDate || null });
+  }
+  const avgRowsR = await db.execute({
+    sql: `SELECT debt_id, COALESCE(SUM(principal_amount),0) AS s FROM transactions
+      WHERE user_id=? AND debt_id IS NOT NULL AND substr(date,1,7) IN (${monthsPh})
+      GROUP BY debt_id`,
+    args: [userId, ...months],
+  });
+  const avgMap = new Map<number, number>();
+  for (const row of avgRowsR.rows as any[]) avgMap.set(N(row.debt_id), N(row.s));
+  const histAllR = await db.execute({
+    sql: `SELECT h.debt_id, h.effective_date, h.rate FROM debt_rate_history h
+      JOIN debts d ON d.id = h.debt_id WHERE d.user_id=? ORDER BY h.debt_id, h.effective_date`,
+    args: [userId],
+  });
+  const histMap = new Map<number, { effective_date: string; rate: number }[]>();
+  for (const row of histAllR.rows as any[]) {
+    const id = N(row.debt_id);
+    const arr = histMap.get(id) || [];
+    arr.push({ effective_date: row.effective_date, rate: typeof row.rate === 'bigint' ? Number(row.rate) : row.rate });
+    histMap.set(id, arr);
+  }
+
   const out: DebtRow[] = [];
   for (const d of debts) {
-    const paidR = await db.execute({
-      sql: `SELECT
-        COALESCE(SUM(principal_amount),0) AS p,
-        COALESCE(SUM(interest_amount),0)  AS i,
-        MAX(date) AS lastDate
-       FROM transactions WHERE debt_id=?`,
-      args: [d.id],
-    });
-    const paid = paidR.rows[0] as any;
-    const paidP = N(paid.p);
-    const paidI = N(paid.i);
+    const paid = aggMap.get(d.id) || { p: 0, i: 0, lastDate: null };
+    const paidP = paid.p;
+    const paidI = paid.i;
     const remaining = Math.max(0, d.initial_principal - paidP);
 
-    const months = monthsBack(3);
-    const placeholders = months.map(() => '?').join(',');
-    const avgR = await db.execute({
-      sql: `SELECT COALESCE(SUM(principal_amount),0) AS s FROM transactions
-       WHERE debt_id=? AND substr(date,1,7) IN (${placeholders})`,
-      args: [d.id, ...months],
-    });
-    const monthlyAvg = N((avgR.rows[0] as any).s) / months.length;
+    const monthlyAvg = (avgMap.get(d.id) || 0) / months.length;
     const monthsToPayoff = monthlyAvg > 0 ? remaining / monthlyAvg : 0;
 
-    const histR = await db.execute({ sql: 'SELECT effective_date, rate FROM debt_rate_history WHERE debt_id=? ORDER BY effective_date', args: [d.id] });
-    const history = (histR.rows as any[]).map(h => ({ effective_date: h.effective_date, rate: typeof h.rate === 'bigint' ? Number(h.rate) : h.rate }));
+    const history = histMap.get(d.id) || [];
     const currentRate = rateAt(history, d.interest_rate, today);
 
     const grace_ends = d.grace_period_months > 0 ? addMonths(d.start_date, d.grace_period_months) : null;
@@ -731,6 +798,14 @@ export async function adjustedSavingsRate(userId: number, month: string): Promis
 
 export async function generateRecurring(userId: number): Promise<number> {
   const db = await ensureDb();
+  const curMonth = currentMonth();
+  const pendR = await db.execute({
+    sql: `SELECT COUNT(*) AS c FROM recurring r
+     WHERE r.user_id=? AND r.active=1
+       AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.recurring_id=r.id AND substr(t.date,1,7)=?)`,
+    args: [userId, curMonth],
+  });
+  if (N((pendR.rows[0] as any).c) === 0) return 0;
   const rulesR = await db.execute({ sql: 'SELECT * FROM recurring WHERE active=1 AND user_id=?', args: [userId] });
   const rules = plain<Recurring>(rulesR.rows as any[]).map(r => ({
     ...r,

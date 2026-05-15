@@ -9,8 +9,10 @@ export const dynamic = 'force-dynamic';
 export default async function Page() {
   const userId = await currentUserId();
   await accrueDebtInterest(userId);
-  const debts = await listDebts(userId);
-  const summary = await debtSummary(userId, currentMonth());
+  const [debts, summary] = await Promise.all([
+    listDebts(userId),
+    debtSummary(userId, currentMonth()),
+  ]);
   const totalAccrued = debts.reduce((s, d) => s + (d.accrued_interest || 0), 0);
 
   // group by kind

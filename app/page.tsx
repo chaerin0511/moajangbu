@@ -91,26 +91,33 @@ function SavingsRateChart({ data }: { data: { month: string; rate: number }[] })
 
 export default async function Dashboard({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const userId = await currentUserId();
-  await generateRecurring(userId);
   const month = searchParams.month || currentMonth();
-  const t = await monthlyTotals(userId, month);
-  const h = await financialHealth(userId, month);
-  const series = await savingsRateSeries(userId);
-  const budgets = await listBudgets(userId, month);
-  const recent = await recentTransactions(userId, 8);
-
-  const balPersonal = await balanceAt(userId, 'personal');
-  const balBusiness = await balanceAt(userId, 'business');
-  const projPersonal = await projectedMonthEndBalance(userId, 'personal');
-  const projBusiness = await projectedMonthEndBalance(userId, 'business');
-
-  const fixedBreakdown = await fixedExpenseBreakdown(userId, month);
-  const ef = await emergencyFund(userId);
-  const ytd = await ytdSavings(userId);
-  const anomalies = await spendingAnomalies(userId, month);
-  const tax = await taxReserve(userId);
-  const dbt = await debtSummary(userId, month);
-  const adj = await adjustedSavingsRate(userId, month);
+  // 모든 집계 쿼리를 병렬 실행 (이전 17번 순차 → 1라운드 병렬)
+  const [
+    _genResult,
+    t, h, series, budgets, recent,
+    balPersonal, balBusiness, projPersonal, projBusiness,
+    fixedBreakdown, ef, ytd, anomalies, tax, dbt, adj,
+  ] = await Promise.all([
+    generateRecurring(userId),
+    monthlyTotals(userId, month),
+    financialHealth(userId, month),
+    savingsRateSeries(userId),
+    listBudgets(userId, month),
+    recentTransactions(userId, 8),
+    balanceAt(userId, 'personal'),
+    balanceAt(userId, 'business'),
+    projectedMonthEndBalance(userId, 'personal'),
+    projectedMonthEndBalance(userId, 'business'),
+    fixedExpenseBreakdown(userId, month),
+    emergencyFund(userId),
+    ytdSavings(userId),
+    spendingAnomalies(userId, month),
+    taxReserve(userId),
+    debtSummary(userId, month),
+    adjustedSavingsRate(userId, month),
+  ]);
+  void _genResult;
 
   return (
     <div className="space-y-8">

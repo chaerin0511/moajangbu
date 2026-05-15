@@ -121,6 +121,14 @@ async function init(db: Client) {
   await tryAlter("ALTER TABLE debt_rate_history ADD COLUMN user_id INTEGER");
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id)`).catch(() => {});
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_cat_user ON categories(user_id)`).catch(() => {});
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_user_date ON transactions(user_id, date)`).catch(() => {});
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_user_type_date ON transactions(user_id, type, date)`).catch(() => {});
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_user_cat ON transactions(user_id, category_id)`).catch(() => {});
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_user_debt ON transactions(user_id, debt_id)`).catch(() => {});
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_recurring ON transactions(recurring_id)`).catch(() => {});
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_debts_user ON debts(user_id, active)`).catch(() => {});
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_budgets_user ON budgets(user_id, month)`).catch(() => {});
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_recurring_user ON recurring(user_id, active)`).catch(() => {});
   await tryAlter("ALTER TABLE account_settings ADD COLUMN tax_reserve_rate REAL NOT NULL DEFAULT 0");
   await tryAlter("ALTER TABLE transactions ADD COLUMN person_id INTEGER");
   await tryAlter("ALTER TABLE transactions ADD COLUMN debt_id INTEGER");
