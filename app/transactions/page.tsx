@@ -5,13 +5,15 @@ import TransactionForm from '@/components/TransactionForm';
 import BulkTransactionForm from '@/components/BulkTransactionForm';
 import Disclosure from '@/components/Disclosure';
 import Link from 'next/link';
+import { currentUserId } from '@/lib/auth-helper';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  const categories = await listCategories();
-  const people = await listPeople();
-  const recent = await recentTransactions(20);
+  const userId = await currentUserId();
+  const categories = await listCategories(userId);
+  const people = await listPeople(userId);
+  const recent = await recentTransactions(userId, 20);
 
   return (
     <div className="space-y-6">

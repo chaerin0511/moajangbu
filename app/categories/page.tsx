@@ -1,10 +1,12 @@
 import { listCategories } from '@/lib/queries';
 import { createCategory, deleteCategory } from '@/lib/actions';
+import { currentUserId } from '@/lib/auth-helper';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  const cats = await listCategories();
+  const userId = await currentUserId();
+  const cats = await listCategories(userId);
   const personal = cats.filter(c => c.ledger === 'personal');
   const business = cats.filter(c => c.ledger === 'business');
   return (

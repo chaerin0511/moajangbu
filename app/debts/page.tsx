@@ -2,13 +2,15 @@ import { listDebts, debtSummary, accrueDebtInterest } from '@/lib/queries';
 import { createDebt, deleteDebt, toggleDebt, recordDebtPayment, addDebtRate } from '@/lib/actions';
 import { DEBT_KINDS } from '@/lib/db';
 import { currentMonth, formatWon, todayISO } from '@/lib/utils';
+import { currentUserId } from '@/lib/auth-helper';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  await accrueDebtInterest();
-  const debts = await listDebts();
-  const summary = await debtSummary(currentMonth());
+  const userId = await currentUserId();
+  await accrueDebtInterest(userId);
+  const debts = await listDebts(userId);
+  const summary = await debtSummary(userId, currentMonth());
   const totalAccrued = debts.reduce((s, d) => s + (d.accrued_interest || 0), 0);
 
   // group by kind

@@ -87,9 +87,40 @@ async function init(db: Client) {
     amount INTEGER NOT NULL,
     UNIQUE(ledger, category_id, month)
   )`);
+  await db.execute(`CREATE TABLE IF NOT EXISTS user_account_settings (
+    user_id INTEGER NOT NULL,
+    ledger TEXT NOT NULL CHECK(ledger IN ('personal','business')),
+    opening_balance INTEGER NOT NULL DEFAULT 0,
+    opening_date TEXT NOT NULL DEFAULT '2025-01-01',
+    tax_reserve_rate REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, ledger)
+  )`);
+  // migrate any per-user rows from legacy account_settings into the new per-user table
+  try {
+    await db.execute(`INSERT OR IGNORE INTO user_account_settings (user_id, ledger, opening_balance, opening_date, tax_reserve_rate)
+      SELECT user_id, ledger, opening_balance, opening_date, tax_reserve_rate FROM account_settings WHERE user_id IS NOT NULL`);
+  } catch { /* ignore */ }
+  await db.execute(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kakao_id TEXT NOT NULL UNIQUE,
+    email TEXT,
+    name TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`);
 
   // migrations for existing databases (ALTER ignores duplicate-column errors)
   const tryAlter = async (sql: string) => { try { await db.execute(sql); } catch { /* column already exists */ } };
+  // multi-tenant: every data table gets user_id
+  await tryAlter("ALTER TABLE categories ADD COLUMN user_id INTEGER");
+  await tryAlter("ALTER TABLE transactions ADD COLUMN user_id INTEGER");
+  await tryAlter("ALTER TABLE recurring ADD COLUMN user_id INTEGER");
+  await tryAlter("ALTER TABLE budgets ADD COLUMN user_id INTEGER");
+  await tryAlter("ALTER TABLE account_settings ADD COLUMN user_id INTEGER");
+  await tryAlter("ALTER TABLE people ADD COLUMN user_id INTEGER");
+  await tryAlter("ALTER TABLE debts ADD COLUMN user_id INTEGER");
+  await tryAlter("ALTER TABLE debt_rate_history ADD COLUMN user_id INTEGER");
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id)`).catch(() => {});
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_cat_user ON categories(user_id)`).catch(() => {});
   await tryAlter("ALTER TABLE account_settings ADD COLUMN tax_reserve_rate REAL NOT NULL DEFAULT 0");
   await tryAlter("ALTER TABLE transactions ADD COLUMN person_id INTEGER");
   await tryAlter("ALTER TABLE transactions ADD COLUMN debt_id INTEGER");

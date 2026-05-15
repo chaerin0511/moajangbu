@@ -1,14 +1,16 @@
 import { getOpeningBalances, balanceAt } from '@/lib/queries';
 import { setOpeningBalance, setTaxReserveRate } from '@/lib/actions';
 import { formatWon } from '@/lib/utils';
+import { currentUserId } from '@/lib/auth-helper';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  const ob = await getOpeningBalances();
+  const userId = await currentUserId();
+  const ob = await getOpeningBalances(userId);
   const cur = {
-    personal: await balanceAt('personal'),
-    business: await balanceAt('business'),
+    personal: await balanceAt(userId, 'personal'),
+    business: await balanceAt(userId, 'business'),
   };
   const ledgers: Array<{ key: 'personal' | 'business'; label: string; tone: string }> = [
     { key: 'personal', label: '개인', tone: 'bg-indigo-100 text-indigo-700' },

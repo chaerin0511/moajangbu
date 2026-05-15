@@ -206,6 +206,23 @@ table.pretty tbody tr:hover { background: #f9fafb; }
 
 .divider { height: 1px; background: var(--border); }
 
+/* Hide scrollbar on horizontal nav (mobile) */
+.nav-scroll::-webkit-scrollbar { display: none; }
+.nav-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+
+/* Make cards that contain tables scrollable horizontally on small screens */
+.card.overflow-hidden { overflow-x: auto; }
+
+@media (max-width: 640px) {
+  html, body { font-size: 13.5px; }
+  h1 { font-size: 1.25rem; }
+  .input, .select { padding: 0.55rem 0.7rem; font-size: 0.9rem; }
+  table.pretty { font-size: 0.82rem; }
+  table.pretty thead th { padding: 0.55rem 0.55rem; }
+  table.pretty tbody td { padding: 0.65rem 0.55rem; }
+  .btn, .btn-primary, .btn-ghost { padding: 0.55rem 0.9rem; font-size: 0.9rem; }
+}
+
 /* Hide default disclosure marker on <summary> */
 summary { list-style: none; cursor: pointer; }
 summary::-webkit-details-marker { display: none; }

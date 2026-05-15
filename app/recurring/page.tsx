@@ -4,19 +4,22 @@ import { createRecurring, deleteRecurring, toggleRecurring } from '@/lib/actions
 import { formatWon, todayISO } from '@/lib/utils';
 import RecurringForm from '@/components/RecurringForm';
 import { revalidatePath } from 'next/cache';
+import { currentUserId } from '@/lib/auth-helper';
 
 export const dynamic = 'force-dynamic';
 
 async function runGenerate() {
   'use server';
-  await generateRecurring();
+  const userId = await currentUserId();
+  await generateRecurring(userId);
   revalidatePath('/recurring');
   revalidatePath('/');
 }
 
 export default async function Page() {
-  const rules = await listRecurring();
-  const categories = await listCategories();
+  const userId = await currentUserId();
+  const rules = await listRecurring(userId);
+  const categories = await listCategories(userId);
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">

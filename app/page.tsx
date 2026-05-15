@@ -5,6 +5,7 @@ import {
   debtSummary, adjustedSavingsRate,
 } from '@/lib/queries';
 import { currentMonth, formatWon } from '@/lib/utils';
+import { currentUserId } from '@/lib/auth-helper';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -89,26 +90,27 @@ function SavingsRateChart({ data }: { data: { month: string; rate: number }[] })
 }
 
 export default async function Dashboard({ searchParams }: { searchParams: Record<string, string | undefined> }) {
-  await generateRecurring();
+  const userId = await currentUserId();
+  await generateRecurring(userId);
   const month = searchParams.month || currentMonth();
-  const t = await monthlyTotals(month);
-  const h = await financialHealth(month);
-  const series = await savingsRateSeries();
-  const budgets = await listBudgets(month);
-  const recent = await recentTransactions(8);
+  const t = await monthlyTotals(userId, month);
+  const h = await financialHealth(userId, month);
+  const series = await savingsRateSeries(userId);
+  const budgets = await listBudgets(userId, month);
+  const recent = await recentTransactions(userId, 8);
 
-  const balPersonal = await balanceAt('personal');
-  const balBusiness = await balanceAt('business');
-  const projPersonal = await projectedMonthEndBalance('personal');
-  const projBusiness = await projectedMonthEndBalance('business');
+  const balPersonal = await balanceAt(userId, 'personal');
+  const balBusiness = await balanceAt(userId, 'business');
+  const projPersonal = await projectedMonthEndBalance(userId, 'personal');
+  const projBusiness = await projectedMonthEndBalance(userId, 'business');
 
-  const fixedBreakdown = await fixedExpenseBreakdown(month);
-  const ef = await emergencyFund();
-  const ytd = await ytdSavings();
-  const anomalies = await spendingAnomalies(month);
-  const tax = await taxReserve();
-  const dbt = await debtSummary(month);
-  const adj = await adjustedSavingsRate(month);
+  const fixedBreakdown = await fixedExpenseBreakdown(userId, month);
+  const ef = await emergencyFund(userId);
+  const ytd = await ytdSavings(userId);
+  const anomalies = await spendingAnomalies(userId, month);
+  const tax = await taxReserve(userId);
+  const dbt = await debtSummary(userId, month);
+  const adj = await adjustedSavingsRate(userId, month);
 
   return (
     <div className="space-y-8">

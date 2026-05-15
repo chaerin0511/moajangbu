@@ -2,12 +2,14 @@ import { listTransactions, listCategories } from '@/lib/queries';
 import { deleteTransaction } from '@/lib/actions';
 import { formatWon } from '@/lib/utils';
 import Link from 'next/link';
+import { currentUserId } from '@/lib/auth-helper';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page({ searchParams }: { searchParams: Record<string, string | undefined> }) {
-  const categories = await listCategories();
-  const txs = await listTransactions(searchParams as any);
+  const userId = await currentUserId();
+  const categories = await listCategories(userId);
+  const txs = await listTransactions(userId, searchParams as any);
   const filterLedger = searchParams.ledger || '';
   const filterType = searchParams.type || '';
   const filterMonth = searchParams.month || '';

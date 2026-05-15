@@ -1,13 +1,15 @@
 import { listPeople, personStats } from '@/lib/queries';
 import { createPerson, deletePerson } from '@/lib/actions';
 import { currentMonth, formatWon } from '@/lib/utils';
+import { currentUserId } from '@/lib/auth-helper';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+  const userId = await currentUserId();
   const month = searchParams.month || currentMonth();
-  const people = await listPeople();
-  const stats = await personStats(month);
+  const people = await listPeople(userId);
+  const stats = await personStats(userId, month);
 
   return (
     <div className="space-y-6">

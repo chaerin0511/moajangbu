@@ -13,20 +13,20 @@ const N = (v: any): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-export async function listCategories(ledger?: Ledger): Promise<Category[]> {
+export async function listCategories(userId: number, ledger?: Ledger): Promise<Category[]> {
   const db = await ensureDb();
   if (ledger) {
-    const r = await db.execute({ sql: 'SELECT * FROM categories WHERE ledger=? ORDER BY name', args: [ledger] });
+    const r = await db.execute({ sql: 'SELECT * FROM categories WHERE ledger=? AND user_id=? ORDER BY name', args: [ledger, userId] });
     return plain<Category>(r.rows as any[]);
   }
-  const r = await db.execute('SELECT * FROM categories ORDER BY ledger, name');
+  const r = await db.execute({ sql: 'SELECT * FROM categories WHERE user_id=? ORDER BY ledger, name', args: [userId] });
   return plain<Category>(r.rows as any[]);
 }
 
-export async function listTransactions(filters: { ledger?: string; type?: string; month?: string; category_id?: string; fixed?: string } = {}): Promise<(Transaction & { category_name: string | null })[]> {
+export async function listTransactions(userId: number, filters: { ledger?: string; type?: string; month?: string; category_id?: string; fixed?: string } = {}): Promise<(Transaction & { category_name: string | null })[]> {
   const db = await ensureDb();
-  const where: string[] = [];
-  const params: any[] = [];
+  const where: string[] = ['t.user_id = ?'];
+  const params: any[] = [userId];
   if (filters.ledger) { where.push('(t.ledger = ? OR t.from_ledger = ? OR t.to_ledger = ?)'); params.push(filters.ledger, filters.ledger, filters.ledger); }
   if (filters.type) { where.push('t.type = ?'); params.push(filters.type); }
   if (filters.month) { where.push("substr(t.date,1,7) = ?"); params.push(filters.month); }
@@ -45,17 +45,17 @@ export async function listTransactions(filters: { ledger?: string; type?: string
                FROM transactions t
                LEFT JOIN categories c ON c.id = t.category_id
                LEFT JOIN people p ON p.id = t.person_id
-               ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+               WHERE ${where.join(' AND ')}
                ORDER BY ${orderBy} LIMIT 500`;
   const r = await db.execute({ sql, args: params });
   return plain<any>(r.rows as any[]);
 }
 
-export async function recentTransactions(limit = 10) {
+export async function recentTransactions(userId: number, limit = 10) {
   const db = await ensureDb();
   const r = await db.execute({
-    sql: `SELECT t.*, c.name as category_name, p.name as person_name FROM transactions t LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN people p ON p.id = t.person_id ORDER BY t.date DESC, t.id DESC LIMIT ?`,
-    args: [limit],
+    sql: `SELECT t.*, c.name as category_name, p.name as person_name FROM transactions t LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN people p ON p.id = t.person_id WHERE t.user_id=? ORDER BY t.date DESC, t.id DESC LIMIT ?`,
+    args: [userId, limit],
   });
   return plain<any>(r.rows as any[]);
 }
@@ -66,9 +66,9 @@ export interface MonthlyTotals {
   combinedNet: number;
 }
 
-export async function monthlyTotals(month: string): Promise<MonthlyTotals> {
+export async function monthlyTotals(userId: number, month: string): Promise<MonthlyTotals> {
   const db = await ensureDb();
-  const r = await db.execute({ sql: `SELECT ledger, type, from_ledger, to_ledger, amount FROM transactions WHERE substr(date,1,7) = ?`, args: [month] });
+  const r = await db.execute({ sql: `SELECT ledger, type, from_ledger, to_ledger, amount FROM transactions WHERE user_id=? AND substr(date,1,7) = ?`, args: [userId, month] });
   const rows = r.rows as unknown as any[];
   const t = {
     personal: { income: 0, expense: 0, net: 0 },
@@ -90,11 +90,11 @@ export async function monthlyTotals(month: string): Promise<MonthlyTotals> {
   return { ...t, combinedNet: t.personal.net + t.business.net };
 }
 
-export async function monthlySeries(): Promise<{ month: string; personalIncome: number; personalExpense: number; businessIncome: number; businessExpense: number }[]> {
+export async function monthlySeries(userId: number): Promise<{ month: string; personalIncome: number; personalExpense: number; businessIncome: number; businessExpense: number }[]> {
   const months = monthsBack(6);
   const out = [];
   for (const m of months) {
-    const t = await monthlyTotals(m);
+    const t = await monthlyTotals(userId, m);
     out.push({
       month: m,
       personalIncome: t.personal.income,
@@ -106,42 +106,42 @@ export async function monthlySeries(): Promise<{ month: string; personalIncome: 
   return out;
 }
 
-export async function spentForBudget(ledger: Ledger, category_id: number, month: string): Promise<number> {
+export async function spentForBudget(userId: number, ledger: Ledger, category_id: number, month: string): Promise<number> {
   const db = await ensureDb();
   const r = await db.execute({
-    sql: `SELECT COALESCE(SUM(amount),0) as s FROM transactions WHERE ledger=? AND category_id=? AND type='expense' AND substr(date,1,7)=?`,
-    args: [ledger, category_id, month],
+    sql: `SELECT COALESCE(SUM(amount),0) as s FROM transactions WHERE user_id=? AND ledger=? AND category_id=? AND type='expense' AND substr(date,1,7)=?`,
+    args: [userId, ledger, category_id, month],
   });
   return N((r.rows[0] as any).s);
 }
 
-export async function listBudgets(month?: string): Promise<(Budget & { category_name: string; spent: number })[]> {
+export async function listBudgets(userId: number, month?: string): Promise<(Budget & { category_name: string; spent: number })[]> {
   const db = await ensureDb();
   const m = month || currentMonth();
   const r = await db.execute({
-    sql: `SELECT b.*, c.name as category_name FROM budgets b JOIN categories c ON c.id=b.category_id WHERE b.month=? ORDER BY b.ledger, c.name`,
-    args: [m],
+    sql: `SELECT b.*, c.name as category_name FROM budgets b JOIN categories c ON c.id=b.category_id WHERE b.user_id=? AND b.month=? ORDER BY b.ledger, c.name`,
+    args: [userId, m],
   });
   const rows = r.rows as unknown as any[];
   const out: (Budget & { category_name: string; spent: number })[] = [];
   for (const row of rows) {
-    const spent = await spentForBudget(row.ledger, N(row.category_id), row.month);
+    const spent = await spentForBudget(userId, row.ledger, N(row.category_id), row.month);
     out.push({ ...row, spent });
   }
   return out;
 }
 
-export async function listRecurring(): Promise<(Recurring & { category_name: string | null })[]> {
+export async function listRecurring(userId: number): Promise<(Recurring & { category_name: string | null })[]> {
   const db = await ensureDb();
-  const r = await db.execute(`SELECT r.*, c.name as category_name FROM recurring r LEFT JOIN categories c ON c.id=r.category_id ORDER BY r.id DESC`);
+  const r = await db.execute({ sql: `SELECT r.*, c.name as category_name FROM recurring r LEFT JOIN categories c ON c.id=r.category_id WHERE r.user_id=? ORDER BY r.id DESC`, args: [userId] });
   return plain<any>(r.rows as any[]);
 }
 
 export interface OpeningBalance { ledger: Ledger; opening_balance: number; opening_date: string; tax_reserve_rate: number }
 
-export async function getOpeningBalances(): Promise<Record<Ledger, OpeningBalance>> {
+export async function getOpeningBalances(userId: number): Promise<Record<Ledger, OpeningBalance>> {
   const db = await ensureDb();
-  const r = await db.execute('SELECT * FROM account_settings');
+  const r = await db.execute({ sql: 'SELECT * FROM user_account_settings WHERE user_id=?', args: [userId] });
   const rows = plain<any>(r.rows as any[]);
   const out: any = {
     personal: { ledger: 'personal', opening_balance: 0, opening_date: '2025-01-01', tax_reserve_rate: 0 },
@@ -158,43 +158,41 @@ export async function getOpeningBalances(): Promise<Record<Ledger, OpeningBalanc
   return out;
 }
 
-export async function balanceAt(ledger: Ledger, dateISO?: string): Promise<number> {
+export async function balanceAt(userId: number, ledger: Ledger, dateISO?: string): Promise<number> {
   const db = await ensureDb();
-  const ob = (await getOpeningBalances())[ledger];
+  const ob = (await getOpeningBalances(userId))[ledger];
   const dateClause = dateISO ? ' AND date <= ?' : '';
-  const params: any[] = dateISO ? [ledger, ob.opening_date, dateISO] : [ledger, ob.opening_date];
+  const params: any[] = dateISO ? [userId, ledger, ob.opening_date, dateISO] : [userId, ledger, ob.opening_date];
   const incExpR = await db.execute({
     sql: `SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount WHEN type='expense' THEN -amount ELSE 0 END),0) AS s
-          FROM transactions WHERE ledger=? AND date >= ?${dateClause}`,
+          FROM transactions WHERE user_id=? AND ledger=? AND date >= ?${dateClause}`,
     args: params,
   });
   const inTransR = await db.execute({
-    sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE type='transfer' AND to_ledger=? AND date >= ?${dateClause}`,
+    sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE user_id=? AND type='transfer' AND to_ledger=? AND date >= ?${dateClause}`,
     args: params,
   });
   const outTransR = await db.execute({
-    sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE type='transfer' AND from_ledger=? AND date >= ?${dateClause}`,
+    sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE user_id=? AND type='transfer' AND from_ledger=? AND date >= ?${dateClause}`,
     args: params,
   });
   return ob.opening_balance + N((incExpR.rows[0] as any).s) + N((inTransR.rows[0] as any).s) - N((outTransR.rows[0] as any).s);
 }
 
-export async function projectedMonthEndBalance(ledger: Ledger): Promise<number> {
+export async function projectedMonthEndBalance(userId: number, ledger: Ledger): Promise<number> {
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const cur = await balanceAt(ledger, todayStr);
+  const cur = await balanceAt(userId, ledger, todayStr);
   const db = await ensureDb();
-  // remaining days this month: project active recurring rules whose day_of_month > today's day
-  const rulesR = await db.execute('SELECT * FROM recurring WHERE active=1');
+  const rulesR = await db.execute({ sql: 'SELECT * FROM recurring WHERE active=1 AND user_id=?', args: [userId] });
   const rules = plain<Recurring>(rulesR.rows as any[]);
   const monthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   let delta = 0;
   for (const r of rules) {
     if (r.day_of_month <= today.getDate()) continue;
-    // skip if already materialized for this month
     const existsR = await db.execute({
-      sql: `SELECT 1 AS x FROM transactions WHERE recurring_id=? AND substr(date,1,7)=?`,
-      args: [r.id, monthStr],
+      sql: `SELECT 1 AS x FROM transactions WHERE user_id=? AND recurring_id=? AND substr(date,1,7)=?`,
+      args: [userId, r.id, monthStr],
     });
     if (existsR.rows.length > 0) continue;
     if (r.type === 'income' && r.ledger === ledger) delta += N(r.amount);
@@ -220,7 +218,7 @@ export interface FinancialHealth {
   vsLastMonth: { income: number; expense: number; net: number };
 }
 
-async function totalsFor(month: string): Promise<{ income: number; expense: number; net: number; pIncome: number; pExpense: number; fIncome: number; fExpense: number }> {
+async function totalsFor(userId: number, month: string): Promise<{ income: number; expense: number; net: number; pIncome: number; pExpense: number; fIncome: number; fExpense: number }> {
   const db = await ensureDb();
   const r = await db.execute({
     sql: `
@@ -231,8 +229,8 @@ async function totalsFor(month: string): Promise<{ income: number; expense: numb
       COALESCE(SUM(CASE WHEN type='expense' AND ledger='personal' THEN amount ELSE 0 END),0) AS pExpense,
       COALESCE(SUM(CASE WHEN type='income' AND recurring_id IS NOT NULL THEN amount ELSE 0 END),0) AS fIncome,
       COALESCE(SUM(CASE WHEN type='expense' AND recurring_id IS NOT NULL AND ledger='personal' THEN amount ELSE 0 END),0) AS fExpense
-    FROM transactions WHERE substr(date,1,7)=?`,
-    args: [month],
+    FROM transactions WHERE user_id=? AND substr(date,1,7)=?`,
+    args: [userId, month],
   });
   const row = r.rows[0] as any;
   const income = N(row.income);
@@ -254,9 +252,9 @@ function prevMonth(month: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export async function financialHealth(month: string): Promise<FinancialHealth> {
-  const cur = await totalsFor(month);
-  const prev = await totalsFor(prevMonth(month));
+export async function financialHealth(userId: number, month: string): Promise<FinancialHealth> {
+  const cur = await totalsFor(userId, month);
+  const prev = await totalsFor(userId, prevMonth(month));
   const savingsRate = cur.income > 0 ? cur.net / cur.income : 0;
   const fixedCoverage = cur.fExpense > 0 ? cur.fIncome / cur.fExpense : (cur.fIncome > 0 ? Infinity : 0);
   const pureSpend = Math.max(0, cur.pExpense - cur.fExpense);
@@ -279,11 +277,11 @@ export async function financialHealth(month: string): Promise<FinancialHealth> {
   };
 }
 
-export async function savingsRateSeries(): Promise<{ month: string; rate: number; net: number }[]> {
+export async function savingsRateSeries(userId: number): Promise<{ month: string; rate: number; net: number }[]> {
   const months = monthsBack(6);
   const out = [];
   for (const m of months) {
-    const t = await totalsFor(m);
+    const t = await totalsFor(userId, m);
     out.push({ month: m, rate: t.income > 0 ? t.net / t.income : 0, net: t.net });
   }
   return out;
@@ -291,9 +289,9 @@ export async function savingsRateSeries(): Promise<{ month: string; rate: number
 
 /* ─────────── People (family members) ─────────── */
 
-export async function listPeople(): Promise<Person[]> {
+export async function listPeople(userId: number): Promise<Person[]> {
   const db = await ensureDb();
-  const r = await db.execute('SELECT * FROM people ORDER BY name');
+  const r = await db.execute({ sql: 'SELECT * FROM people WHERE user_id=? ORDER BY name', args: [userId] });
   return plain<Person>(r.rows as any[]);
 }
 
@@ -306,10 +304,10 @@ export interface PersonStat {
   lastDate: string | null;
 }
 
-export async function personStats(month: string): Promise<PersonStat[]> {
+export async function personStats(userId: number, month: string): Promise<PersonStat[]> {
   const db = await ensureDb();
   const year = month.slice(0, 4);
-  const people = await listPeople();
+  const people = await listPeople(userId);
   const out: PersonStat[] = [];
   for (const p of people) {
     const mR = await db.execute({
@@ -317,16 +315,16 @@ export async function personStats(month: string): Promise<PersonStat[]> {
         COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END),0) AS income,
         COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense,
         MAX(date) AS lastDate
-       FROM transactions WHERE person_id=? AND substr(date,1,7)=?`,
-      args: [p.id, month],
+       FROM transactions WHERE user_id=? AND person_id=? AND substr(date,1,7)=?`,
+      args: [userId, p.id, month],
     });
     const m = mR.rows[0] as any;
     const yR = await db.execute({
       sql: `SELECT
         COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END),0) AS income,
         COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense
-       FROM transactions WHERE person_id=? AND substr(date,1,4)=?`,
-      args: [p.id, year],
+       FROM transactions WHERE user_id=? AND person_id=? AND substr(date,1,4)=?`,
+      args: [userId, p.id, year],
     });
     const y = yR.rows[0] as any;
     out.push({
@@ -349,7 +347,7 @@ export interface FixedItem {
   count: number;
 }
 
-export async function fixedExpenseBreakdown(month: string): Promise<FixedItem[]> {
+export async function fixedExpenseBreakdown(userId: number, month: string): Promise<FixedItem[]> {
   const db = await ensureDb();
   const r = await db.execute({
     sql: `
@@ -357,10 +355,10 @@ export async function fixedExpenseBreakdown(month: string): Promise<FixedItem[]>
            COALESCE(SUM(t.amount),0) AS amount, COUNT(*) AS count
     FROM transactions t
     LEFT JOIN categories c ON c.id = t.category_id
-    WHERE t.type='expense' AND t.recurring_id IS NOT NULL AND substr(t.date,1,7)=?
+    WHERE t.user_id=? AND t.type='expense' AND t.recurring_id IS NOT NULL AND substr(t.date,1,7)=?
     GROUP BY t.ledger, t.category_id, c.name
     ORDER BY amount DESC`,
-    args: [month],
+    args: [userId, month],
   });
   return (r.rows as any[]).map(row => ({
     category_id: row.category_id === null ? null : N(row.category_id),
@@ -373,35 +371,34 @@ export async function fixedExpenseBreakdown(month: string): Promise<FixedItem[]>
 
 /* ─────────── Emergency fund (months covered) ─────────── */
 
-export async function emergencyFund(): Promise<{ balance: number; monthlyFixed: number; months: number }> {
+export async function emergencyFund(userId: number): Promise<{ balance: number; monthlyFixed: number; months: number }> {
   const db = await ensureDb();
-  // average personal fixed expense over last 3 months
   const months = monthsBack(3);
   let total = 0;
   for (const m of months) {
     const r = await db.execute({
       sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions
-       WHERE ledger='personal' AND type='expense' AND recurring_id IS NOT NULL AND substr(date,1,7)=?`,
-      args: [m],
+       WHERE user_id=? AND ledger='personal' AND type='expense' AND recurring_id IS NOT NULL AND substr(date,1,7)=?`,
+      args: [userId, m],
     });
     total += N((r.rows[0] as any).s);
   }
   const monthlyFixed = total / Math.max(1, months.length);
-  const balance = await balanceAt('personal');
+  const balance = await balanceAt(userId, 'personal');
   return { balance, monthlyFixed, months: monthlyFixed > 0 ? balance / monthlyFixed : 0 };
 }
 
 /* ─────────── YTD savings ─────────── */
 
-export async function ytdSavings(year?: string): Promise<{ income: number; expense: number; net: number }> {
+export async function ytdSavings(userId: number, year?: string): Promise<{ income: number; expense: number; net: number }> {
   const y = year || String(new Date().getFullYear());
   const db = await ensureDb();
   const r = await db.execute({
     sql: `SELECT
       COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END),0) AS income,
       COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense
-     FROM transactions WHERE substr(date,1,4)=?`,
-    args: [y],
+     FROM transactions WHERE user_id=? AND substr(date,1,4)=?`,
+    args: [userId, y],
   });
   const row = r.rows[0] as any;
   const income = N(row.income);
@@ -420,30 +417,29 @@ export interface Anomaly {
   deltaPct: number;
 }
 
-export async function spendingAnomalies(month: string, thresholdPct = 0.30): Promise<Anomaly[]> {
+export async function spendingAnomalies(userId: number, month: string, thresholdPct = 0.30): Promise<Anomaly[]> {
   const db = await ensureDb();
   const baselineMonths = monthsBack(4).filter(m => m !== month);
   if (baselineMonths.length === 0) return [];
-  // current month spend by category
   const curR = await db.execute({
     sql: `
     SELECT t.ledger, t.category_id, c.name AS category_name,
            COALESCE(SUM(t.amount),0) AS amount
     FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
-    WHERE t.type='expense' AND substr(t.date,1,7)=? AND t.category_id IS NOT NULL
+    WHERE t.user_id=? AND t.type='expense' AND substr(t.date,1,7)=? AND t.category_id IS NOT NULL
     GROUP BY t.ledger, t.category_id, c.name`,
-    args: [month],
+    args: [userId, month],
   });
   const cur = curR.rows as any[];
   const out: Anomaly[] = [];
   for (const c of cur) {
     const amount = N(c.amount);
-    if (amount < 10000) continue; // ignore tiny
+    if (amount < 10000) continue;
     const placeholders = baselineMonths.map(() => '?').join(',');
     const avgR = await db.execute({
       sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions
-       WHERE type='expense' AND ledger=? AND category_id=? AND substr(date,1,7) IN (${placeholders})`,
-      args: [c.ledger, N(c.category_id), ...baselineMonths],
+       WHERE user_id=? AND type='expense' AND ledger=? AND category_id=? AND substr(date,1,7) IN (${placeholders})`,
+      args: [userId, c.ledger, N(c.category_id), ...baselineMonths],
     });
     const average = N((avgR.rows[0] as any).s) / baselineMonths.length;
     if (average < 10000) continue;
@@ -458,40 +454,40 @@ export async function spendingAnomalies(month: string, thresholdPct = 0.30): Pro
   return out.sort((a, b) => Math.abs(b.deltaPct) - Math.abs(a.deltaPct));
 }
 
-/* ─────────── Tax reserve (사업자 세금 충당금) ─────────── */
+/* ─────────── Tax reserve ─────────── */
 
 export interface TaxReserve {
   rate: number;
   ytdBusinessIncome: number;
-  reservedRequired: number;   // ytd income × rate
-  taxPaid: number;            // 카테고리 '세금' 지출 합계 (사업자)
-  reservedBalance: number;    // required - paid (남겨둬야 할 금액)
-  adjustedBusinessBalance: number; // 실제 사업자 잔액 - reservedBalance
+  reservedRequired: number;
+  taxPaid: number;
+  reservedBalance: number;
+  adjustedBusinessBalance: number;
 }
 
-export async function taxReserve(year?: string): Promise<TaxReserve> {
+export async function taxReserve(userId: number, year?: string): Promise<TaxReserve> {
   const y = year || String(new Date().getFullYear());
   const db = await ensureDb();
-  const ob = (await getOpeningBalances()).business;
+  const ob = (await getOpeningBalances(userId)).business;
   const rate = ob.tax_reserve_rate || 0;
 
   const incR = await db.execute({
     sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions
-     WHERE ledger='business' AND type='income' AND substr(date,1,4)=?`,
-    args: [y],
+     WHERE user_id=? AND ledger='business' AND type='income' AND substr(date,1,4)=?`,
+    args: [userId, y],
   });
   const taxR = await db.execute({
     sql: `SELECT COALESCE(SUM(t.amount),0) AS s FROM transactions t
      JOIN categories c ON c.id = t.category_id
-     WHERE t.ledger='business' AND t.type='expense' AND c.name LIKE '%세금%' AND substr(t.date,1,4)=?`,
-    args: [y],
+     WHERE t.user_id=? AND t.ledger='business' AND t.type='expense' AND c.name LIKE '%세금%' AND substr(t.date,1,4)=?`,
+    args: [userId, y],
   });
 
   const incS = N((incR.rows[0] as any).s);
   const taxS = N((taxR.rows[0] as any).s);
   const reservedRequired = Math.round(incS * rate);
   const reservedBalance = Math.max(0, reservedRequired - taxS);
-  const bizBal = await balanceAt('business');
+  const bizBal = await balanceAt(userId, 'business');
   return {
     rate,
     ytdBusinessIncome: incS,
@@ -502,7 +498,7 @@ export async function taxReserve(year?: string): Promise<TaxReserve> {
   };
 }
 
-/* ─────────── Debts (대출) ─────────── */
+/* ─────────── Debts ─────────── */
 
 export interface DebtRow extends Debt {
   paid_principal: number;
@@ -540,15 +536,10 @@ function rateAt(history: { effective_date: string; rate: number }[], baseRate: n
   return r;
 }
 
-/**
- * 매월 1일 기준으로 남은원금 × (해당시점 연이자율 / 12)를 accrued_interest에 누적.
- * 거치기간 중에는 원금이 줄지 않으므로 동일한 원금에 이자만 쌓임.
- * last_accrual_date 이후의 모든 누락된 월을 한꺼번에 캐치업.
- */
-export async function accrueDebtInterest(asOf?: string): Promise<number> {
+export async function accrueDebtInterest(userId: number, asOf?: string): Promise<number> {
   const db = await ensureDb();
   const today = asOf || new Date().toISOString().slice(0, 10);
-  const debtsR = await db.execute('SELECT * FROM debts WHERE active=1');
+  const debtsR = await db.execute({ sql: 'SELECT * FROM debts WHERE active=1 AND user_id=?', args: [userId] });
   const debts = plain<Debt>(debtsR.rows as any[]).map(d => ({
     ...d,
     initial_principal: N(d.initial_principal),
@@ -564,15 +555,11 @@ export async function accrueDebtInterest(asOf?: string): Promise<number> {
     for (const d of debts) {
       const histR = await tx.execute({ sql: 'SELECT effective_date, rate FROM debt_rate_history WHERE debt_id=? ORDER BY effective_date', args: [d.id] });
       const history = (histR.rows as any[]).map(h => ({ effective_date: h.effective_date, rate: typeof h.rate === 'bigint' ? Number(h.rate) : h.rate }));
-      // first accrual month = month after start_date (or after last_accrual_date)
       const startFrom = d.last_accrual_date || d.start_date;
-      // walk month-by-month: accrue on the 1st of each month strictly after startFrom up to today
       const startD = new Date(startFrom);
       const todayD = new Date(today);
-      // first candidate = the 1st of the month following startFrom
       let cursor = new Date(startD.getFullYear(), startD.getMonth() + 1, 1);
       const paidPrincipalR = await tx.execute({ sql: `SELECT COALESCE(SUM(principal_amount),0) AS p FROM transactions WHERE debt_id=? AND date <= ?`, args: [d.id, today] });
-      // accumulating: we step through months. Use a remaining principal that tracks principal payments up to each cursor date.
       let monthly = 0;
       while (cursor <= todayD) {
         const cursorISO = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}-01`;
@@ -598,10 +585,10 @@ export async function accrueDebtInterest(asOf?: string): Promise<number> {
   return accruedTotal;
 }
 
-export async function listDebts(): Promise<DebtRow[]> {
+export async function listDebts(userId: number): Promise<DebtRow[]> {
   const db = await ensureDb();
   const today = new Date().toISOString().slice(0, 10);
-  const debtsR = await db.execute('SELECT * FROM debts ORDER BY active DESC, name');
+  const debtsR = await db.execute({ sql: 'SELECT * FROM debts WHERE user_id=? ORDER BY active DESC, name', args: [userId] });
   const debts = plain<Debt>(debtsR.rows as any[]).map(d => ({
     ...d,
     initial_principal: N(d.initial_principal),
@@ -611,9 +598,8 @@ export async function listDebts(): Promise<DebtRow[]> {
     mandatory_repay_income: N(d.mandatory_repay_income),
     active: N(d.active),
   }));
-  // YTD personal income → annualized projection (for mandatory-repay ETA)
   const year = today.slice(0, 4);
-  const yIncR = await db.execute({ sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ledger='personal' AND type='income' AND substr(date,1,4)=?`, args: [year] });
+  const yIncR = await db.execute({ sql: `SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE user_id=? AND ledger='personal' AND type='income' AND substr(date,1,4)=?`, args: [userId, year] });
   const yIncS = N((yIncR.rows[0] as any).s);
   const month1 = Number(today.slice(5, 7));
   const annualized = month1 > 0 ? Math.round((yIncS / month1) * 12) : 0;
@@ -650,7 +636,6 @@ export async function listDebts(): Promise<DebtRow[]> {
     const grace_ends = d.grace_period_months > 0 ? addMonths(d.start_date, d.grace_period_months) : null;
     const in_grace = !!(grace_ends && grace_ends > today);
 
-    // mandatory repay ETA: if annualized income < threshold, estimate months at recent income growth (we don't track growth, so simply mark "예상 도달 시점 미정"). Show ratio.
     let mandatory_repay_eta: string | null = null;
     if (d.mandatory_repay_income > 0) {
       if (annualized >= d.mandatory_repay_income) {
@@ -691,28 +676,29 @@ export interface DebtSummary {
   activeCount: number;
 }
 
-export async function debtSummary(month: string): Promise<DebtSummary> {
+export async function debtSummary(userId: number, month: string): Promise<DebtSummary> {
   const db = await ensureDb();
   const year = month.slice(0, 4);
-  const totalRemR = await db.execute(
-    `SELECT COALESCE(SUM(d.initial_principal),0) - COALESCE(SUM(t.principal_amount),0) AS rem
+  const totalRemR = await db.execute({
+    sql: `SELECT COALESCE(SUM(d.initial_principal),0) - COALESCE(SUM(t.principal_amount),0) AS rem
      FROM debts d
      LEFT JOIN transactions t ON t.debt_id = d.id
-     WHERE d.active = 1`
-  );
+     WHERE d.active = 1 AND d.user_id = ?`,
+    args: [userId],
+  });
   const mR = await db.execute({
     sql: `SELECT
       COALESCE(SUM(principal_amount),0) AS p,
       COALESCE(SUM(interest_amount),0)  AS i
-     FROM transactions WHERE debt_id IS NOT NULL AND substr(date,1,7)=?`,
-    args: [month],
+     FROM transactions WHERE user_id=? AND debt_id IS NOT NULL AND substr(date,1,7)=?`,
+    args: [userId, month],
   });
   const yR = await db.execute({
     sql: `SELECT COALESCE(SUM(interest_amount),0) AS i
-     FROM transactions WHERE debt_id IS NOT NULL AND substr(date,1,4)=?`,
-    args: [year],
+     FROM transactions WHERE user_id=? AND debt_id IS NOT NULL AND substr(date,1,4)=?`,
+    args: [userId, year],
   });
-  const activeR = await db.execute(`SELECT COUNT(*) AS c FROM debts WHERE active=1`);
+  const activeR = await db.execute({ sql: `SELECT COUNT(*) AS c FROM debts WHERE active=1 AND user_id=?`, args: [userId] });
   return {
     totalRemaining: Math.max(0, N((totalRemR.rows[0] as any).rem)),
     monthPrincipal: N((mR.rows[0] as any).p),
@@ -722,8 +708,7 @@ export async function debtSummary(month: string): Promise<DebtSummary> {
   };
 }
 
-/* principal-adjusted savings rate: count principal repayments as savings, not expense */
-export async function adjustedSavingsRate(month: string): Promise<{ rate: number; adjustedNet: number; principalRepaid: number }> {
+export async function adjustedSavingsRate(userId: number, month: string): Promise<{ rate: number; adjustedNet: number; principalRepaid: number }> {
   const db = await ensureDb();
   const r = await db.execute({
     sql: `
@@ -731,23 +716,22 @@ export async function adjustedSavingsRate(month: string): Promise<{ rate: number
       COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END),0) AS income,
       COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense,
       COALESCE(SUM(CASE WHEN debt_id IS NOT NULL THEN principal_amount ELSE 0 END),0) AS principal
-    FROM transactions WHERE substr(date,1,7)=?`,
-    args: [month],
+    FROM transactions WHERE user_id=? AND substr(date,1,7)=?`,
+    args: [userId, month],
   });
   const row = r.rows[0] as any;
   const income = N(row.income);
   const expense = N(row.expense);
   const principal = N(row.principal);
-  // adjusted: principal repayments are treated as savings, so subtract from expense
   const adjExpense = expense - principal;
   const adjNet = income - adjExpense;
   const rate = income > 0 ? adjNet / income : 0;
   return { rate, adjustedNet: adjNet, principalRepaid: principal };
 }
 
-export async function generateRecurring(): Promise<number> {
+export async function generateRecurring(userId: number): Promise<number> {
   const db = await ensureDb();
-  const rulesR = await db.execute('SELECT * FROM recurring WHERE active=1');
+  const rulesR = await db.execute({ sql: 'SELECT * FROM recurring WHERE active=1 AND user_id=?', args: [userId] });
   const rules = plain<Recurring>(rulesR.rows as any[]).map(r => ({
     ...r,
     amount: N(r.amount),
@@ -765,13 +749,13 @@ export async function generateRecurring(): Promise<number> {
       let m = start.getMonth() + 1;
       while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
         const monthStr = `${y}-${String(m).padStart(2, '0')}`;
-        const existsR = await tx.execute({ sql: `SELECT 1 as x FROM transactions WHERE recurring_id=? AND substr(date,1,7)=?`, args: [rule.id, monthStr] });
+        const existsR = await tx.execute({ sql: `SELECT 1 as x FROM transactions WHERE user_id=? AND recurring_id=? AND substr(date,1,7)=?`, args: [userId, rule.id, monthStr] });
         if (existsR.rows.length === 0) {
           const day = clampDay(y, m, rule.day_of_month);
           const date = `${monthStr}-${String(day).padStart(2, '0')}`;
           await tx.execute({
-            sql: `INSERT INTO transactions (ledger, type, date, amount, category_id, from_ledger, to_ledger, memo, recurring_id) VALUES (?,?,?,?,?,?,?,?,?)`,
-            args: [rule.ledger, rule.type, date, rule.amount, rule.category_id as any, rule.from_ledger as any, rule.to_ledger as any, rule.memo as any, rule.id],
+            sql: `INSERT INTO transactions (ledger, type, date, amount, category_id, from_ledger, to_ledger, memo, recurring_id, user_id) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+            args: [rule.ledger, rule.type, date, rule.amount, rule.category_id as any, rule.from_ledger as any, rule.to_ledger as any, rule.memo as any, rule.id, userId],
           });
           created++;
         }
@@ -784,5 +768,4 @@ export async function generateRecurring(): Promise<number> {
   return created;
 }
 
-// keep helpers referenced
 void monthDiff;

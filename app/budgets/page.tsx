@@ -2,13 +2,15 @@ import { listBudgets, listCategories } from '@/lib/queries';
 import { upsertBudget, deleteBudget } from '@/lib/actions';
 import { currentMonth, formatWon } from '@/lib/utils';
 import BudgetForm from '@/components/BudgetForm';
+import { currentUserId } from '@/lib/auth-helper';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+  const userId = await currentUserId();
   const month = searchParams.month || currentMonth();
-  const categories = await listCategories();
-  const budgets = await listBudgets(month);
+  const categories = await listCategories(userId);
+  const budgets = await listBudgets(userId, month);
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">예산</h1>
